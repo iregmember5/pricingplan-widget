@@ -518,7 +518,9 @@ export const PricingCardPreview: React.FC<PricingCardPreviewProps> = ({ data, ap
                         };
                         const currency = data.globalCurrency || card.currency || 'usd';
                         const symbol = currencySymbols[currency.toLowerCase()] || '$';
-                        const priceNum = prices[i] || card.price?.replace(/[^0-9.]/g, '') || '';
+                        const priceNum = (prices[i] ?? card.price ?? '')
+                          .toString()
+                          .replace(/[^0-9.]/g, '');
                         return `${symbol}${priceNum}`;
                       })()}
                     </span>
@@ -551,8 +553,8 @@ export const PricingCardPreview: React.FC<PricingCardPreviewProps> = ({ data, ap
                     textAlign: 'left', margin: '28px 0',
                     paddingLeft: '0',
                     listStyle: 'none',
-                    flexGrow: 1,
-                    minHeight: 'clamp(200px, 35vw, 280px)',
+                    flexGrow: (card.features?.length || 0) >= 4 ? 1 : 0,
+                    minHeight: (card.features?.length || 0) >= 4 ? 'clamp(200px, 35vw, 280px)' : '0',
                   }}>
                     {card.features?.some(
                       (f: any) =>
