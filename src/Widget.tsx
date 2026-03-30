@@ -1,25 +1,42 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { ComparisonTablePreview } from './previews/ComparisonTablePreview';
 import { PricingCardPreview } from './previews/PricingCardPreview';
+import NewPricingTemplatePreview, { normalizeTemplateDoc } from './previews/NewPricingTemplatePreview';
+import { MOCK_NEW_PRICING_WIDGET } from './mockNewPricingWidget';
+
+const MOCK_NEW_PRICING_ID = 'mock-new-pricing';
+const NEW_PRICING_TYPES = new Set([
+  'new_pricing_widget',
+  'new_pricing_template',
+  'pricing_template_json',
+]);
 
 const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
 
-  // Check if we're in embed mode
   const isEmbedMode = () => {
     const params = new URLSearchParams(window.location.search);
     return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
   };
 
   useEffect(() => {
-    if (!widgetId || widgetId === "undefined" || widgetId.trim() === "") {
+    if (widgetId === MOCK_NEW_PRICING_ID) {
+      setActualWidgetId(MOCK_NEW_PRICING_ID);
+      setContent({
+        type: 'new_pricing_widget',
+        data: MOCK_NEW_PRICING_WIDGET,
+      });
       setLoading(false);
       return;
     }
 
-    // Try mypowerly.com first, then fallback to esign-admin.signmary.com
+    if (!widgetId || widgetId === 'undefined' || widgetId.trim() === '') {
+      setLoading(false);
+      return;
+    }
+
     const apiUrls = [
       `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
       `https://esign-admin.signmary.com/api/widgets/widget-data/public/${widgetId}/`
@@ -33,22 +50,33 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
       fetch(apiUrl)
         .then(res => {
-          if (!res.ok) throw new Error("Widget not found");
+          if (!res.ok) throw new Error('Widget not found');
           return res.json();
         })
         .then(result => {
           console.log('API Response:', result);
-          
-          const innerData = result.data.data;
-          const appearance = innerData.appearance;
-          
-          setActualWidgetId(result.data.id);
 
-          setContent({
-            type: result.data.type,
-            data: innerData,
-            appearance: appearance
-          });
+          const widget = result?.data;
+          const innerData = widget?.data;
+          const appearance = innerData?.appearance;
+          const widgetType = widget?.type;
+
+          setActualWidgetId(widget?.id || widgetId);
+
+          if (NEW_PRICING_TYPES.has(widgetType)) {
+            const normalizedDoc = normalizeTemplateDoc(innerData);
+            setContent({
+              type: widgetType,
+              data: normalizedDoc,
+            });
+          } else {
+            setContent({
+              type: widgetType,
+              data: innerData,
+              appearance,
+            });
+          }
+
           setLoading(false);
         })
         .catch(err => {
@@ -68,11 +96,11 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
   if (loading) {
     return (
-      <div style={{ 
-        padding: isEmbedMode() ? "20px" : "60px", 
-        textAlign: "center", 
-        color: "#666", 
-        fontSize: "16px",
+      <div style={{
+        padding: isEmbedMode() ? '20px' : '60px',
+        textAlign: 'center',
+        color: '#666',
+        fontSize: '16px',
         background: isEmbedMode() ? 'transparent' : 'white'
       }}>
         Loading your pricing widget...
@@ -82,11 +110,11 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
   if (!content) {
     return (
-      <div style={{ 
-        padding: isEmbedMode() ? "20px" : "60px", 
-        textAlign: "center", 
-        color: "#ef4444", 
-        fontSize: "16px",
+      <div style={{
+        padding: isEmbedMode() ? '20px' : '60px',
+        textAlign: 'center',
+        color: '#ef4444',
+        fontSize: '16px',
         background: isEmbedMode() ? 'transparent' : 'white'
       }}>
         Widget not found or invalid ID
@@ -96,15 +124,28 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
   return (
     <div style={{ background: isEmbedMode() ? 'transparent' : 'white' }}>
-      {content.type === "pricing_columns" ? (
+      {content.type === 'pricing_columns' ? (
         <PricingCardPreview data={content.data} appearance={content.appearance} widgetId={actualWidgetId} />
-      ) : content.type === "comparison_table" ? (
+      ) : content.type === 'comparison_table' ? (
         <ComparisonTablePreview data={content.data} appearance={content.appearance} widgetId={actualWidgetId} />
+      ) : NEW_PRICING_TYPES.has(content.type) ? (
+        content.data ? (
+          <NewPricingTemplatePreview doc={content.data} />
+        ) : (
+          <div style={{
+            padding: isEmbedMode() ? '20px' : '60px',
+            textAlign: 'center',
+            color: '#ef4444',
+            background: isEmbedMode() ? 'transparent' : 'white'
+          }}>
+            New pricing widget data is empty or invalid
+          </div>
+        )
       ) : (
-        <div style={{ 
-          padding: isEmbedMode() ? "20px" : "60px", 
-          textAlign: "center", 
-          color: "#ef4444",
+        <div style={{
+          padding: isEmbedMode() ? '20px' : '60px',
+          textAlign: 'center',
+          color: '#ef4444',
           background: isEmbedMode() ? 'transparent' : 'white'
         }}>
           Unsupported widget type: {content.type}
