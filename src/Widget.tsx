@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ComparisonTablePreview } from './previews/ComparisonTablePreview';
 import { PricingCardPreview } from './previews/PricingCardPreview';
 import NewPricingTemplatePreview, { normalizeTemplateDoc } from './previews/NewPricingTemplatePreview';
@@ -11,17 +11,23 @@ const NEW_PRICING_TYPES = new Set([
   'pricing_template_json',
 ]);
 
+function hasRenderableNewPricingDoc(doc: any) {
+  return !!(doc && typeof doc === 'object' && (doc.layout || (Array.isArray(doc.plans) && doc.plans.length >= 0)));
+}
+
+function isEmbedMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
+}
+
 const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
 
-  const isEmbedMode = () => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
-  };
-
   useEffect(() => {
+    let cancelled = false;
+
     if (widgetId === MOCK_NEW_PRICING_ID) {
       setActualWidgetId(MOCK_NEW_PRICING_ID);
       setContent({
@@ -37,61 +43,104 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       return;
     }
 
-    const apiUrls = [
-      `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
-      `https://esign-admin.signmary.com/api/widgets/widget-data/public/${widgetId}/`
+    const publicTemplateUrls = [
+      `https://mypowerly.com/v1/api/widgets/new-pricing-widget/public/${widgetId}/`,
+      `https://esign-admin.signmary.com/api/widgets/new-pricing-widget/public/${widgetId}/`,
     ];
 
-    let fetchAttempt = 0;
+    const legacyWidgetUrls = [
+      `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
+      `https://esign-admin.signmary.com/api/widgets/widget-data/public/${widgetId}/`,
+    ];
 
-    const tryFetch = () => {
-      const apiUrl = apiUrls[fetchAttempt];
-      console.log('Fetching widget from:', apiUrl);
-
-      fetch(apiUrl)
-        .then(res => {
-          if (!res.ok) throw new Error('Widget not found');
-          return res.json();
-        })
-        .then(result => {
-          console.log('API Response:', result);
-
-          const widget = result?.data;
-          const innerData = widget?.data;
-          const appearance = innerData?.appearance;
-          const widgetType = widget?.type;
-
-          setActualWidgetId(widget?.id || widgetId);
-
-          if (NEW_PRICING_TYPES.has(widgetType)) {
-            const normalizedDoc = normalizeTemplateDoc(innerData);
-            setContent({
-              type: widgetType,
-              data: normalizedDoc,
-            });
-          } else {
-            setContent({
-              type: widgetType,
-              data: innerData,
-              appearance,
-            });
-          }
-
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(`Failed to load from ${apiUrl}:`, err);
-          fetchAttempt++;
-          if (fetchAttempt < apiUrls.length) {
-            tryFetch();
-          } else {
-            setContent(null);
-            setLoading(false);
-          }
-        });
+    const tryJsonFetch = async (url: string) => {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json();
     };
 
-    tryFetch();
+    const loadContent = async () => {
+      try {
+        for (const apiUrl of publicTemplateUrls) {
+          try {
+            console.log('Trying new pricing public template endpoint:', apiUrl);
+            const result = await tryJsonFetch(apiUrl);
+            const normalizedDoc = normalizeTemplateDoc(result);
+
+            if (hasRenderableNewPricingDoc(normalizedDoc)) {
+              if (cancelled) return;
+              setActualWidgetId(result?.id || widgetId);
+              setContent({
+                type: 'new_pricing_template',
+                data: normalizedDoc,
+              });
+              setLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.warn(`New pricing template fetch failed for ${apiUrl}:`, err);
+          }
+        }
+
+        for (const apiUrl of legacyWidgetUrls) {
+          try {
+            console.log('Trying legacy widget endpoint:', apiUrl);
+            const result = await tryJsonFetch(apiUrl);
+            const widget = result?.data;
+            const innerData = widget?.data;
+            const appearance = innerData?.appearance;
+            const widgetType = widget?.type;
+
+            if (!widget) {
+              throw new Error('Legacy widget response missing data payload');
+            }
+
+            if (cancelled) return;
+            setActualWidgetId(widget?.id || widgetId);
+
+            if (NEW_PRICING_TYPES.has(widgetType) || innerData?.config_json) {
+              const normalizedDoc = normalizeTemplateDoc(innerData);
+              setContent({
+                type: widgetType || 'new_pricing_widget',
+                data: normalizedDoc,
+              });
+            } else {
+              setContent({
+                type: widgetType,
+                data: innerData,
+                appearance,
+              });
+            }
+
+            setLoading(false);
+            return;
+          } catch (err) {
+            console.warn(`Legacy widget fetch failed for ${apiUrl}:`, err);
+          }
+        }
+
+        if (!cancelled) {
+          setContent(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Failed to load widget:', err);
+        if (!cancelled) {
+          setContent(null);
+          setLoading(false);
+        }
+      }
+    };
+
+    setLoading(true);
+    setContent(null);
+    loadContent();
+
+    return () => {
+      cancelled = true;
+    };
   }, [widgetId]);
 
   if (loading) {
