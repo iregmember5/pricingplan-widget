@@ -7,6 +7,7 @@ interface PaymentFlowProps {
   planId: string;
   interval?: string;
   paymentType: string;
+  useNewPaymentApi?: boolean;
   onBack: () => void;
 }
 
@@ -15,6 +16,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   planId,
   interval,
   paymentType,
+  useNewPaymentApi = false,
   onBack
 }) => {
   const [step, setStep] = useState<'methods' | 'stripe' | 'success'>('methods');
@@ -40,10 +42,15 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       payload.interval = interval;
     }
 
-    const apiUrls = [
-      'https://mypowerly.com/v1/api/widgets/stripe/create-payment/',
-      'https://esign-admin.signmary.com/api/widgets/stripe/create-payment/'
-    ];
+    const apiUrls = useNewPaymentApi
+      ? [
+          'https://mypowerly.com/v1/api/widgets/payment/initiate/',
+          'https://esign-admin.signmary.com/api/widgets/payment/initiate/'
+        ]
+      : [
+          'https://mypowerly.com/v1/api/widgets/stripe/create-payment/',
+          'https://esign-admin.signmary.com/api/widgets/stripe/create-payment/'
+        ];
 
     let fetchAttempt = 0;
 
@@ -62,14 +69,18 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
         const data = await response.json();
         
-        if (data.success) {
-          setClientSecret(data.client_secret);
-          setPaymentIntentId(data.payment_intent_id || data.subscription_id);
-          setBackendPaymentType(data.payment_type);
-          setStripeAccount(data.stripe_account);
+        const resolvedClientSecret = data.clientSecret || data.client_secret;
+        const resolvedPaymentIntentId = data.paymentIntentId || data.payment_intent_id || data.subscription_id;
+        const resolvedPaymentType = data.payment_type || data.paymentType || (paymentType === 'subscription' ? 'subscription' : 'one_time');
+
+        if (resolvedClientSecret) {
+          setClientSecret(resolvedClientSecret);
+          setPaymentIntentId(resolvedPaymentIntentId || '');
+          setBackendPaymentType(resolvedPaymentType);
+          setStripeAccount(data.stripe_account || data.stripeAccount);
           setStep('stripe');
         } else {
-          alert(data.message || 'Payment creation failed');
+          alert(data.message || data.error || 'Payment creation failed');
         }
         setLoading(false);
       } catch (error) {

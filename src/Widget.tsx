@@ -345,6 +345,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
         planId={selectedPlan.planId}
         paymentType={selectedPlan.paymentType || 'one_time'}
         interval={selectedPlan.paymentType === 'subscription' ? selectedPlan.interval : undefined}
+        useNewPaymentApi
         onBack={() => {
           setShowPaymentFlow(false);
           setSelectedPlan(null);
