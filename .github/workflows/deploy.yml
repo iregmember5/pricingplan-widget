@@ -73,19 +73,19 @@ jobs:
           SSH_HOST: ${{ secrets.VPS_HOST }}
           SSH_USER: ${{ secrets.VPS_USERNAME }}
         run: |
-          echo "Deploying files to ${SSH_USER}@${SSH_HOST}:/var/www/pricing-bundlers/"
-          scp -i ~/.ssh/id_ed25519 -r dist/* ${SSH_USER}@${SSH_HOST}:/var/www/pricing-bundlers/
+          echo "Deploying files to ${SSH_USER}@${SSH_HOST}:/var/www/widget-stand-alone/dist/"
+          scp -i ~/.ssh/id_ed25519 -r dist/* ${SSH_USER}@${SSH_HOST}:/var/www/widget-stand-alone/dist/
 
       - name: Verify deployment
         env:
           SSH_HOST: ${{ secrets.VPS_HOST }}
           SSH_USER: ${{ secrets.VPS_USERNAME }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 ${SSH_USER}@${SSH_HOST} "ls -la /var/www/pricing-bundlers/ && echo 'Total files: ' \$(find /var/www/pricing-bundlers/ -type f | wc -l)"
-
-      - name: Restart Apache
+          ssh -i ~/.ssh/id_ed25519 ${SSH_USER}@${SSH_HOST} "ls -la /var/www/widget-stand-alone/dist/ && echo 'Total files: ' \$(find /var/www/widget-stand-alone/dist/ -type f | wc -l)"
+      
+      - name: Deploy to Nginx Server
         env:
           SSH_HOST: ${{ secrets.VPS_HOST }}
           SSH_USER: ${{ secrets.VPS_USERNAME }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 ${SSH_USER}@${SSH_HOST} "sudo systemctl restart apache2 && echo '✅ Apache restarted'"
+          rsync -avz --delete -e "ssh -i ~/.ssh/id_ed25519" dist/ ${SSH_USER}@${SSH_HOST}:/var/www/widget-stand-alone/dist/
