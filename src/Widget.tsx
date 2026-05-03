@@ -124,6 +124,58 @@ function shouldUseNewWidgetPayment(doc: any, plans: Array<{ planId: string }>) {
   return plans.length > 0 && !hasCustomLinksInDoc(doc);
 }
 
+function normalizeAppearance(raw: any): Record<string, any> {
+  if (!raw) return {};
+  return {
+    primaryColor: raw.primary_color ?? raw.primaryColor,
+    secondaryColor: raw.secondary_color ?? raw.secondaryColor,
+    buttonColor: raw.button_color ?? raw.buttonColor,
+    font: raw.font,
+    fontSize: raw.font_size ?? raw.fontSize,
+    fontWeight: raw.font_weight ?? raw.fontWeight,
+    buttonShape: raw.button_shape ?? raw.buttonShape,
+    buttonRadius: raw.button_radius ?? raw.buttonRadius,
+    buttonType: raw.button_type ?? raw.buttonType,
+    columnStyle: raw.column_style ?? raw.columnStyle,
+    widgetBackgroundColor: raw.widget_background_color ?? raw.widgetBackgroundColor,
+  };
+}
+
+function normalizeWidgetData(raw: any): Record<string, any> {
+  if (!raw) return {};
+  return {
+    ...raw,
+    multiTableMode: raw.multi_table_mode ?? raw.multiTableMode,
+    showWidgetTitle: raw.show_widget_title ?? raw.showWidgetTitle,
+    widgetTitle: raw.widget_title ?? raw.widgetTitle,
+    widgetTitleCaption: raw.widget_title_caption ?? raw.widgetTitleCaption,
+    widgetTitleColor: raw.widget_title_color ?? raw.widgetTitleColor,
+    widgetCaptionColor: raw.widget_caption_color ?? raw.widgetCaptionColor,
+    paymentType: raw.payment_type ?? raw.paymentType,
+    tables: (raw.tables || []).map((t: any) => ({
+      ...t,
+      showWidgetTitle: t.show_widget_title ?? t.showWidgetTitle,
+      widgetTitle: t.widget_title ?? t.widgetTitle,
+      widgetTitleCaption: t.widget_title_caption ?? t.widgetTitleCaption,
+      widgetTitleColor: t.widget_title_color ?? t.widgetTitleColor,
+      widgetCaptionColor: t.widget_caption_color ?? t.widgetCaptionColor,
+    })),
+    cards: (raw.cards || []).map((c: any) => ({
+      ...c,
+      imageUrl: c.image_url ?? c.imageUrl,
+      titleCaption: c.title_caption ?? c.titleCaption,
+      priceCaption: c.price_caption ?? c.priceCaption,
+      priceAmount: c.price_amount ?? c.priceAmount,
+      priceColor: c.price_color ?? c.priceColor,
+      buttonText: c.button_text ?? c.buttonText,
+      buttonCaption: c.button_caption ?? c.buttonCaption,
+      buttonLink: c.button_link ?? c.buttonLink,
+      buttonLinkTarget: c.button_link_target ?? c.buttonLinkTarget,
+      planId: c.plan_id ?? c.planId,
+    })),
+  };
+}
+
 const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -226,8 +278,8 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
             } else {
               setContent({
                 type: widgetType,
-                data: innerData,
-                appearance,
+                data: normalizeWidgetData(innerData),
+                appearance: normalizeAppearance(appearance),
               });
             }
 
