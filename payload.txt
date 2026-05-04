@@ -1,0 +1,450 @@
+that is the payload of my saas  
+
+{type: "comparison_table", name: "1099 Automation vs Tax1099",…}
+data
+: 
+{title: "1099 Automation vs Tax1099",…}
+appearance
+: 
+{font: "Inter", font_size: 16, button_type: "filled", font_weight: "400", button_color: "#7c3aed",…}
+button_color
+: 
+"#7c3aed"
+button_radius
+: 
+12
+button_shape
+: 
+"rounded"
+button_type
+: 
+"filled"
+column_style
+: 
+"custom"
+font
+: 
+"Inter"
+font_size
+: 
+16
+font_weight
+: 
+"400"
+primary_color
+: 
+"#1F2937"
+secondary_color
+: 
+"#F3F4F6"
+widget_background_color
+: 
+"transparent"
+categories
+: 
+[{name: "Core Difference",…}, {name: "Data Handling & Integration",…},…]
+0
+: 
+{name: "Core Difference",…}
+features
+: 
+[{name: "Data Source", type: "text"}, {name: "CSV Requirement", type: "text"},…]
+0
+: 
+{name: "Data Source", type: "text"}
+name
+: 
+"Data Source"
+type
+: 
+"text"
+1
+: 
+{name: "CSV Requirement", type: "text"}
+2
+: 
+{name: "Workflow", type: "text"}
+3
+: 
+{name: "Platform Integration", type: "text"}
+4
+: 
+{name: "Setup Effort", type: "text"}
+5
+: 
+{name: "Automation Level", type: "text"}
+name
+: 
+"Core Difference"
+1
+: 
+{name: "Data Handling & Integration",…}
+2
+: 
+{name: "Compliance & Validation",…}
+3
+: 
+{name: "Filing Experience",…}
+currency
+: 
+"usd"
+interval
+: 
+null
+payment_gateway
+: 
+"stripe"
+payment_type
+: 
+"one_time"
+plans
+: 
+[{name: "1099 Automation", plan_id: "1099automation",…}, {name: "Tax1099", plan_id: "tax1099",…}]
+0
+: 
+{name: "1099 Automation", plan_id: "1099automation",…}
+button_text
+: 
+"Get Started"
+features
+: 
+{_data _source: "Direct platform sync (no exports required)", _c_s_v _requirement: "❌ Not required",…}
+_automation _level
+: 
+"High (zero-export system)"
+_bubble _apps
+: 
+"Direct database sync"
+_bulk _filing
+: 
+"Fully automated from integrations"
+_c_s_v _requirement
+: 
+"❌ Not required"
+_data _source
+: 
+"Direct platform sync (no exports required)"
+_error _detection
+: 
+"Pre-eFiling auto-validation engine"
+_filing _method
+: 
+"One-click direct eFiling from platforms"
+_google _drive _sync
+: 
+"Auto-fetch structured data"
+_i_r_s _compliance
+: 
+"Built-in IRS + state rules engine"
+_manual _input
+: 
+"Optional only"
+_platform _integration
+: 
+"Native: Stripe, PayPal, Shopify, Bubble, WordPress, Google Drive"
+_recipient _delivery
+: 
+"Automated (email/online/mail)"
+_rejections _handling
+: 
+"Auto-fix + retry workflow"
+_setup _effort
+: 
+"Connect & auto-sync"
+_shopify / _word_press
+: 
+""
+_stripe / _pay_pal _sync
+: 
+""
+_t_i_n _matching
+: 
+"Automated validation layer"
+_workflow
+: 
+"Fully automated end-to-end eFiling"
+name
+: 
+"1099 Automation"
+plan_id
+: 
+"1099automation"
+price_amount
+: 
+0
+1
+: 
+{name: "Tax1099", plan_id: "tax1099",…}
+button_text
+: 
+"Get Started"
+features
+: 
+{_data _source: "File upload / integrations / CSV imports",…}
+_automation _level
+: 
+"Medium (semi-automated)"
+_bubble _apps
+: 
+"Not supported"
+_bulk _filing
+: 
+"Supported via bulk upload tools"
+_c_s_v _requirement
+: 
+"⚠️ Often required for bulk uploads"
+_data _source
+: 
+"File upload / integrations / CSV imports"
+_error _detection
+: 
+"AI-assisted validation tools"
+_filing _method
+: 
+"Step-by-step guided filing"
+_google _drive _sync
+: 
+"Not core feature"
+_i_r_s _compliance
+: 
+"IRS-authorized eFile platform"
+_manual _input
+: 
+"Supported"
+_platform _integration
+: 
+"Accounting software integrations (QuickBooks, Xero, etc.)"
+_recipient _delivery
+: 
+"Available delivery options"
+_rejections _handling
+: 
+"Resubmission supported"
+_setup _effort
+: 
+"Upload/import data required"
+_shopify / _word_press
+: 
+""
+_stripe / _pay_pal _sync
+: 
+""
+_t_i_n _matching
+: 
+"Real-time/bulk TIN matching available"
+_workflow
+: 
+"Guided/manual workflow with validation steps"
+name
+: 
+"Tax1099"
+plan_id
+: 
+"tax1099"
+price_amount
+: 
+0
+proration_behavior
+: 
+"create_prorations"
+title
+: 
+"1099 Automation vs Tax1099"
+name
+: 
+"1099 Automation vs Tax1099"
+stripe_account_id
+: 
+3
+type
+: 
+"comparison_table"
+
+
+and that is the reponse of the  standlone widget  on the basis of the widget is  render 
+
+now hte problem is that the  what i set and create the widget    in my sass it not exactly show in to  the standlone widget 
+
+here is the response of the standlone widget  
+
+{
+    "success": true,
+    "data": {
+        "id": "657232b3-a17d-479c-9846-ac4fb8abe0a8",
+        "name": "1099 Automation vs Tax1099",
+        "type": "comparison_table",
+        "data": {
+            "plans": [
+                {
+                    "name": "1099 Automation",
+                    "plan_id": "1099automation",
+                    "features": {
+                        "_workflow": "Fully automated end-to-end eFiling",
+                        "_bubble _apps": "Direct database sync",
+                        "_bulk _filing": "Fully automated from integrations",
+                        "_data _source": "Direct platform sync (no exports required)",
+                        "_manual _input": "Optional only",
+                        "_setup _effort": "Connect & auto-sync",
+                        "_filing _method": "One-click direct eFiling from platforms",
+                        "_t_i_n _matching": "Automated validation layer",
+                        "_error _detection": "Pre-eFiling auto-validation engine",
+                        "_automation _level": "High (zero-export system)",
+                        "_i_r_s _compliance": "Built-in IRS + state rules engine",
+                        "_c_s_v _requirement": "❌ Not required",
+                        "_google _drive _sync": "Auto-fetch structured data",
+                        "_recipient _delivery": "Automated (email/online/mail)",
+                        "_rejections _handling": "Auto-fix + retry workflow",
+                        "_platform _integration": "Native: Stripe, PayPal, Shopify, Bubble, WordPress, Google Drive",
+                        "_shopify / _word_press": "",
+                        "_stripe / _pay_pal _sync": ""
+                    },
+                    "button_text": "Get Started",
+                    "price_amount": 0
+                },
+                {
+                    "name": "Tax1099",
+                    "plan_id": "tax1099",
+                    "features": {
+                        "_workflow": "Guided/manual workflow with validation steps",
+                        "_bubble _apps": "Not supported",
+                        "_bulk _filing": "Supported via bulk upload tools",
+                        "_data _source": "File upload / integrations / CSV imports",
+                        "_manual _input": "Supported",
+                        "_setup _effort": "Upload/import data required",
+                        "_filing _method": "Step-by-step guided filing",
+                        "_t_i_n _matching": "Real-time/bulk TIN matching available",
+                        "_error _detection": "AI-assisted validation tools",
+                        "_automation _level": "Medium (semi-automated)",
+                        "_i_r_s _compliance": "IRS-authorized eFile platform",
+                        "_c_s_v _requirement": "⚠️ Often required for bulk uploads",
+                        "_google _drive _sync": "Not core feature",
+                        "_recipient _delivery": "Available delivery options",
+                        "_rejections _handling": "Resubmission supported",
+                        "_platform _integration": "Accounting software integrations (QuickBooks, Xero, etc.)",
+                        "_shopify / _word_press": "",
+                        "_stripe / _pay_pal _sync": ""
+                    },
+                    "button_text": "Get Started",
+                    "price_amount": 0
+                }
+            ],
+            "title": "1099 Automation vs Tax1099",
+            "currency": "usd",
+            "interval": null,
+            "appearance": {
+                "font": "Inter",
+                "font_size": 16,
+                "button_type": "filled",
+                "font_weight": "400",
+                "button_color": "#7c3aed",
+                "button_shape": "rounded",
+                "column_style": "custom",
+                "button_radius": 12,
+                "primary_color": "#1F2937",
+                "secondary_color": "#F3F4F6",
+                "widget_background_color": "transparent"
+            },
+            "categories": [
+                {
+                    "name": "Core Difference",
+                    "features": [
+                        {
+                            "name": "Data Source",
+                            "type": "text"
+                        },
+                        {
+                            "name": "CSV Requirement",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Workflow",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Platform Integration",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Setup Effort",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Automation Level",
+                            "type": "text"
+                        }
+                    ]
+                },
+                {
+                    "name": "Data Handling & Integration",
+                    "features": [
+                        {
+                            "name": "Stripe / PayPal Sync",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Shopify / WordPress",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Google Drive Sync",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Bubble Apps",
+                            "type": "text"
+                        }
+                    ]
+                },
+                {
+                    "name": "Compliance & Validation",
+                    "features": [
+                        {
+                            "name": "TIN Matching",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Error Detection",
+                            "type": "text"
+                        },
+                        {
+                            "name": "IRS Compliance",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Rejections Handling",
+                            "type": "text"
+                        }
+                    ]
+                },
+                {
+                    "name": "Filing Experience",
+                    "features": [
+                        {
+                            "name": "Filing Method",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Manual Input",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Bulk Filing",
+                            "type": "text"
+                        },
+                        {
+                            "name": "Recipient Delivery",
+                            "type": "text"
+                        }
+                    ]
+                }
+            ],
+            "payment_type": "one_time",
+            "payment_gateway": "stripe",
+            "proration_behavior": "create_prorations"
+        },
+        "public_slug": "1099-automation-vs-tax1099",
+        "created_at": "2026-05-02T12:06:52.316724Z",
+        "updated_at": "2026-05-04T10:39:58.307424Z"
+    }
+}
+

@@ -137,6 +137,7 @@ function normalizeAppearance(raw: any): Record<string, any> {
     buttonRadius: raw.button_radius ?? raw.buttonRadius,
     buttonType: raw.button_type ?? raw.buttonType,
     columnStyle: raw.column_style ?? raw.columnStyle,
+    categoryTextColor: raw.category_text_color ?? raw.categoryTextColor,
     widgetBackgroundColor: raw.widget_background_color ?? raw.widgetBackgroundColor,
   };
 }
@@ -152,6 +153,21 @@ function normalizeWidgetData(raw: any): Record<string, any> {
     widgetTitleColor: raw.widget_title_color ?? raw.widgetTitleColor,
     widgetCaptionColor: raw.widget_caption_color ?? raw.widgetCaptionColor,
     paymentType: raw.payment_type ?? raw.paymentType,
+    paymentGateway: raw.payment_gateway ?? raw.paymentGateway,
+    interval: raw.interval ?? null,
+    plans: (raw.plans || []).map((p: any) => ({
+      ...p,
+      imageUrl: p.image_url ?? p.imageUrl,
+      buttonText: p.button_text ?? p.buttonText,
+      buttonCaption: p.button_caption ?? p.buttonCaption,
+      buttonLink: p.button_link ?? p.buttonLink,
+      buttonLinkTarget: p.button_link_target ?? p.buttonLinkTarget,
+      headerColor: p.header_color ?? p.headerColor,
+      headerTextColor: p.header_text_color ?? p.headerTextColor,
+      buttonColor: p.button_color ?? p.buttonColor,
+      planId: p.plan_id ?? p.planId,
+      priceAmount: p.price_amount ?? p.priceAmount,
+    })),
     tables: (raw.tables || []).map((t: any) => ({
       ...t,
       showWidgetTitle: t.show_widget_title ?? t.showWidgetTitle,
@@ -406,8 +422,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     );
   }
 
+  const widgetBg = content?.appearance?.widgetBackgroundColor ?? (isEmbedMode() ? 'transparent' : 'white');
+
   return (
-    <div style={{ background: isEmbedMode() ? 'transparent' : 'white' }}>
+    <div style={{ background: widgetBg }}>
       {content.type === 'pricing_columns' ? (
         <PricingCardPreview data={content.data} appearance={content.appearance} widgetId={actualWidgetId} />
       ) : content.type === 'comparison_table' ? (

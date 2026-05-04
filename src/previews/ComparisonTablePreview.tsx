@@ -1,19 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PaymentFlow } from '../PaymentFlow';
+
+/** Normalize a string to a canonical key for fuzzy matching: lowercase, alphanumeric only */
+function canonicalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Build a map from canonical feature name → actual key in plan.features */
+function buildFeatureLookup(features: Record<string, string | boolean>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const key of Object.keys(features)) {
+    map.set(canonicalize(key), key);
+  }
+  return map;
+}
+
+/** Look up a feature value by display name, falling back to fuzzy canonical match */
+function getFeatureValue(
+  features: Record<string, string | boolean>,
+  lookup: Map<string, string>,
+  featName: string
+): string | boolean | undefined {
+  // Exact match first
+  if (featName in features) return features[featName];
+  // Canonical match
+  const actualKey = lookup.get(canonicalize(featName));
+  if (actualKey !== undefined) return features[actualKey];
+  return undefined;
+}
 
 interface Plan {
   name: string;
   price: string;
   period: string;
   imageUrl?: string | null;
-  buttonText: string;
+  image_url?: string | null;
+  buttonText?: string;
+  button_text?: string;
   buttonCaption?: string;
+  button_caption?: string;
   buttonLink?: string;
+  button_link?: string;
   buttonLinkTarget?: "_self" | "_blank";
+  button_link_target?: "_self" | "_blank";
   features: Record<string, string | boolean>;
   headerColor?: string;
+  header_color?: string;
   buttonColor?: string;
+  button_color?: string;
   headerTextColor?: string;
+  header_text_color?: string;
 }
 
 interface Category {
@@ -31,6 +67,8 @@ interface AppearanceSettings {
   buttonRadius: number;
   buttonType: "filled" | "outline" | "gradient";
   categoryTextColor?: string;
+  widgetBackgroundColor?: string;
+  columnStyle?: string;
 }
 
 interface ComparisonTablePreviewProps {
@@ -38,6 +76,12 @@ interface ComparisonTablePreviewProps {
     title: string;
     plans: Plan[];
     categories: Category[];
+    currency?: string;
+    interval?: string | null;
+    paymentType?: string;
+    payment_type?: string;
+    paymentGateway?: string;
+    payment_gateway?: string;
   };
   appearance: AppearanceSettings;
   widgetId?: string;
@@ -58,6 +102,29 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(data.categories.map(c => c.name))
+  );
+
+  // Resolve camelCase or snake_case plan fields
+  const pf = (plan: Plan) => ({
+    imageUrl: plan.imageUrl ?? plan.image_url,
+    buttonText: plan.buttonText ?? plan.button_text ?? '',
+    buttonCaption: plan.buttonCaption ?? plan.button_caption,
+    buttonLink: plan.buttonLink ?? plan.button_link,
+    buttonLinkTarget: plan.buttonLinkTarget ?? plan.button_link_target,
+    headerColor: plan.headerColor ?? plan.header_color,
+    headerTextColor: plan.headerTextColor ?? plan.header_text_color,
+    buttonColor: plan.buttonColor ?? plan.button_color,
+  });
+
+  // Resolve data-level fields
+  const paymentGateway = data.paymentGateway ?? data.payment_gateway;
+  const paymentType = data.paymentType ?? data.payment_type ?? 'one_time';
+  const interval = data.interval ?? undefined;
+
+  // Build per-plan feature lookup maps once
+  const featureLookups = useMemo(
+    () => data.plans.map(p => buildFeatureLookup(p.features)),
+    [data.plans]
   );
 
   const app = appearance || {
@@ -87,8 +154,8 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
       <PaymentFlow
         widgetId={widgetId || ''}
         planId={selectedPlan.planId}
-        interval={data.interval}
-        paymentType={data.paymentType || 'one_time'}
+        interval={interval}
+        paymentType={paymentType}
         onBack={() => {
           setShowPaymentFlow(false);
           setSelectedPlan(null);
@@ -107,6 +174,7 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
         color: app.primaryColor,
         width: '100%',
         padding: '20px',
+        background: app.widgetBackgroundColor || 'transparent',
       }}>
         <h3 style={{ 
           textAlign: "center", 
@@ -121,17 +189,19 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
         <div className="desktop-view">
           <div style={{ display: "grid", gap: "32px", gridTemplateColumns: `220px repeat(${data.plans.length}, 1fr)` }}>
             <div />
-            {data.plans.map((plan, i) => (
+            {data.plans.map((plan, i) => {
+              const f = pf(plan);
+              return (
               <div key={i} style={{ textAlign: "center" }}>
-                {plan.imageUrl && (
+                {f.imageUrl && (
                   <div style={{ marginBottom: "20px", borderRadius: "16px", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,0.1)" }}>
-                    <img src={plan.imageUrl} alt={plan.name} style={{ width: "100%", height: "180px", objectFit: "cover" }} />
+                    <img src={f.imageUrl} alt={plan.name} style={{ width: "100%", height: "180px", objectFit: "cover" }} />
                   </div>
                 )}
 
                 <div style={{
-                  backgroundColor: plan.headerColor || app.primaryColor || '#3b82f6',
-                  color: plan.headerTextColor || '#ffffff',
+                  backgroundColor: f.headerColor || app.primaryColor || '#3b82f6',
+                  color: f.headerTextColor || '#ffffff',
                   padding: "24px 16px",
                   borderRadius: "16px",
                   marginBottom: "20px",
@@ -141,14 +211,14 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                     {plan.name}
                   </h4>
                   <div style={{ fontSize: "2.8em", lineHeight: "1" }}>
-                    {data.currency === 'usd' ? `$${plan.price?.replace(/[^0-9.]/g, '') || ''}` : plan.price}
+                    {plan.price}
                   </div>
                   <div style={{ opacity: 0.9, fontSize: "1em", marginTop: "4px" }}>
                     {plan.period}
                   </div>
                 </div>
 
-                {data.payment_gateway === "stripe" ? (
+                {paymentGateway === "stripe" ? (
                   <button
                     onClick={() => {
                       setSelectedPlan(plan);
@@ -156,15 +226,15 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                     }}
                     style={{
                       background: app.buttonType === "filled"
-                        ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                        ? (f.buttonColor || app.buttonColor || app.primaryColor)
                         : app.buttonType === "gradient"
-                          ? `linear-gradient(to right, ${plan.buttonColor || app.buttonColor || app.primaryColor}, ${app.secondaryColor})`
+                          ? `linear-gradient(to right, ${f.buttonColor || app.buttonColor || app.primaryColor}, ${app.secondaryColor})`
                           : "transparent",
                       border: app.buttonType === "outline"
-                        ? `3px solid ${plan.buttonColor || app.buttonColor || app.primaryColor}`
+                        ? `3px solid ${f.buttonColor || app.buttonColor || app.primaryColor}`
                         : "none",
                       color: app.buttonType === "outline" || app.buttonType === "gradient"
-                        ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                        ? (f.buttonColor || app.buttonColor || app.primaryColor)
                         : "#ffffff",
                       borderRadius: buttonRadius,
                       padding: "16px 32px",
@@ -178,24 +248,24 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                       cursor: "pointer"
                     }}
                   >
-                    {plan.buttonText}
+                    {f.buttonText}
                   </button>
-                ) : plan.buttonLink ? (
+                ) : f.buttonLink ? (
                   <a
-                    href={plan.buttonLink}
-                    target={plan.buttonLinkTarget || "_self"}
-                    rel={plan.buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
+                    href={f.buttonLink}
+                    target={f.buttonLinkTarget || "_self"}
+                    rel={f.buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
                     style={{
                       background: app.buttonType === "filled"
-                        ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                        ? (f.buttonColor || app.buttonColor || app.primaryColor)
                         : app.buttonType === "gradient"
-                          ? `linear-gradient(to right, ${plan.buttonColor || app.buttonColor || app.primaryColor}, ${app.secondaryColor})`
+                          ? `linear-gradient(to right, ${f.buttonColor || app.buttonColor || app.primaryColor}, ${app.secondaryColor})`
                           : "transparent",
                       border: app.buttonType === "outline"
-                        ? `3px solid ${plan.buttonColor || app.buttonColor || app.primaryColor}`
+                        ? `3px solid ${f.buttonColor || app.buttonColor || app.primaryColor}`
                         : "none",
                       color: app.buttonType === "outline" || app.buttonType === "gradient"
-                        ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                        ? (f.buttonColor || app.buttonColor || app.primaryColor)
                         : "#ffffff",
                       borderRadius: buttonRadius,
                       padding: "16px 32px",
@@ -208,18 +278,18 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                       width: "100%",
                     }}
                   >
-                    {plan.buttonText}
+                    {f.buttonText}
                   </a>
                 ) : (
                   <button style={{
                     background: app.buttonType === "filled"
-                      ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                      ? (f.buttonColor || app.buttonColor || app.primaryColor)
                       : "transparent",
                     border: app.buttonType === "outline"
-                      ? `3px solid ${plan.buttonColor || app.buttonColor || app.primaryColor}`
+                      ? `3px solid ${f.buttonColor || app.buttonColor || app.primaryColor}`
                       : "none",
                     color: app.buttonType === "outline"
-                      ? (plan.buttonColor || app.buttonColor || app.primaryColor)
+                      ? (f.buttonColor || app.buttonColor || app.primaryColor)
                       : "#ffffff",
                     borderRadius: buttonRadius,
                     padding: "16px 32px",
@@ -228,17 +298,18 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                     width: "100%",
                     cursor: "pointer",
                   }}>
-                    {plan.buttonText}
+                    {f.buttonText}
                   </button>
                 )}
 
-                {plan.buttonCaption && (
+                {f.buttonCaption && (
                   <p style={{ margin: "16px 0 0", opacity: 0.8, fontSize: "0.95em" }}>
-                    {plan.buttonCaption}
+                    {f.buttonCaption}
                   </p>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Desktop Features Table */}
@@ -293,21 +364,24 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                         <div style={{ color: app.primaryColor }}>
                           {feat.name}
                         </div>
-                        {data.plans.map(plan => (
-                          <div key={plan.name} style={{ textAlign: "center" }}>
-                            {feat.type === "boolean" ? (
-                              plan.features[feat.name] ? (
-                                <span style={{ color: "#10b981", fontSize: "1.8em" }}>✓</span>
+                        {data.plans.map((plan, planIdx) => {
+                          const value = getFeatureValue(plan.features, featureLookups[planIdx], feat.name);
+                          return (
+                            <div key={plan.name} style={{ textAlign: "center" }}>
+                              {feat.type === "boolean" ? (
+                                value ? (
+                                  <span style={{ color: "#10b981", fontSize: "1.8em" }}>✓</span>
+                                ) : (
+                                  <span style={{ color: "#ef4444", fontSize: "1.8em" }}>✗</span>
+                                )
                               ) : (
-                                <span style={{ color: "#ef4444", fontSize: "1.8em" }}>✗</span>
-                              )
-                            ) : (
-                              <span style={{ fontWeight: "500" }}>
-                                {(plan.features[feat.name] as string) || "-"}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                                <span style={{ fontWeight: "500" }}>
+                                  {(value as string) || "-"}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -319,7 +393,9 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
 
         {/* Mobile View - Card Layout */}
         <div className="mobile-view" style={{ flexDirection: 'column', gap: '24px' }}>
-          {data.plans.map((plan, planIdx) => (
+          {data.plans.map((plan, planIdx) => {
+            const f = pf(plan);
+            return (
             <div key={planIdx} style={{
               border: '2px solid #e5e7eb',
               borderRadius: '16px',
@@ -328,23 +404,23 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
             }}>
               {/* Plan Header */}
-              {plan.imageUrl && (
+              {f.imageUrl && (
                 <div style={{ width: '100%' }}>
-                  <img src={plan.imageUrl} alt={plan.name} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
+                  <img src={f.imageUrl} alt={plan.name} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
                 </div>
               )}
 
               <div style={{
                 padding: '20px',
-                backgroundColor: plan.headerColor || '#3b82f6',
-                color: plan.headerTextColor || '#ffffff',
+                backgroundColor: f.headerColor || app.primaryColor || '#3b82f6',
+                color: f.headerTextColor || '#ffffff',
                 textAlign: 'center'
               }}>
                 <h4 style={{ fontSize: '1.5em', fontWeight: 'bold', margin: '0 0 8px 0' }}>
                   {plan.name}
                 </h4>
                 <div style={{ fontSize: '2.5em', fontWeight: 'bold', margin: '8px 0' }}>
-                  {data.currency === 'usd' ? `$${plan.price?.replace(/[^0-9.]/g, '') || ''}` : plan.price}
+                  {plan.price}
                 </div>
                 <div style={{ fontSize: '1em', opacity: 0.9 }}>
                   {plan.period}
@@ -353,7 +429,7 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
 
               {/* CTA Button */}
               <div style={{ padding: '20px' }}>
-                {data.payment_gateway === "stripe" ? (
+                {paymentGateway === "stripe" ? (
                   <button
                     onClick={() => {
                       setSelectedPlan(plan);
@@ -361,12 +437,12 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                     }}
                     style={{
                       background: app.buttonType === "filled"
-                        ? (plan.buttonColor || app.buttonColor)
+                        ? (f.buttonColor || app.buttonColor)
                         : app.buttonType === "gradient"
-                          ? `linear-gradient(to right, ${plan.buttonColor || app.buttonColor}, ${app.secondaryColor})`
+                          ? `linear-gradient(to right, ${f.buttonColor || app.buttonColor}, ${app.secondaryColor})`
                           : "transparent",
-                      border: app.buttonType === "outline" ? `3px solid ${plan.buttonColor || app.buttonColor}` : "none",
-                      color: app.buttonType === "outline" || app.buttonType === "gradient" ? (plan.buttonColor || app.buttonColor) : "#fff",
+                      border: app.buttonType === "outline" ? `3px solid ${f.buttonColor || app.buttonColor}` : "none",
+                      color: app.buttonType === "outline" || app.buttonType === "gradient" ? (f.buttonColor || app.buttonColor) : "#fff",
                       borderRadius: buttonRadius,
                       padding: '14px 24px',
                       fontWeight: '600',
@@ -378,21 +454,21 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                       cursor: 'pointer'
                     }}
                   >
-                    {plan.buttonText}
+                    {f.buttonText}
                   </button>
-                ) : plan.buttonLink ? (
+                ) : f.buttonLink ? (
                   <a
-                    href={plan.buttonLink}
-                    target={plan.buttonLinkTarget || "_self"}
-                    rel={plan.buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
+                    href={f.buttonLink}
+                    target={f.buttonLinkTarget || "_self"}
+                    rel={f.buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
                     style={{
                       background: app.buttonType === "filled"
-                        ? (plan.buttonColor || app.buttonColor)
+                        ? (f.buttonColor || app.buttonColor)
                         : app.buttonType === "gradient"
-                          ? `linear-gradient(to right, ${plan.buttonColor || app.buttonColor}, ${app.secondaryColor})`
+                          ? `linear-gradient(to right, ${f.buttonColor || app.buttonColor}, ${app.secondaryColor})`
                           : "transparent",
-                      border: app.buttonType === "outline" ? `3px solid ${plan.buttonColor || app.buttonColor}` : "none",
-                      color: app.buttonType === "outline" || app.buttonType === "gradient" ? (plan.buttonColor || app.buttonColor) : "#fff",
+                      border: app.buttonType === "outline" ? `3px solid ${f.buttonColor || app.buttonColor}` : "none",
+                      color: app.buttonType === "outline" || app.buttonType === "gradient" ? (f.buttonColor || app.buttonColor) : "#fff",
                       borderRadius: buttonRadius,
                       padding: '14px 24px',
                       fontWeight: '600',
@@ -403,13 +479,13 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                       width: '100%'
                     }}
                   >
-                    {plan.buttonText}
+                    {f.buttonText}
                   </a>
                 ) : (
                   <button style={{
-                    background: app.buttonType === "filled" ? (plan.buttonColor || app.buttonColor) : "transparent",
-                    border: app.buttonType === "outline" ? `3px solid ${plan.buttonColor || app.buttonColor}` : "none",
-                    color: app.buttonType === "outline" ? (plan.buttonColor || app.buttonColor) : "#fff",
+                    background: app.buttonType === "filled" ? (f.buttonColor || app.buttonColor) : "transparent",
+                    border: app.buttonType === "outline" ? `3px solid ${f.buttonColor || app.buttonColor}` : "none",
+                    color: app.buttonType === "outline" ? (f.buttonColor || app.buttonColor) : "#fff",
                     borderRadius: buttonRadius,
                     padding: '14px 24px',
                     fontWeight: '600',
@@ -417,13 +493,13 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                     width: '100%',
                     cursor: 'pointer'
                   }}>
-                    {plan.buttonText}
+                    {f.buttonText}
                   </button>
                 )}
 
-                {plan.buttonCaption && (
+                {f.buttonCaption && (
                   <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.9em', opacity: 0.8 }}>
-                    {plan.buttonCaption}
+                    {f.buttonCaption}
                   </p>
                 )}
               </div>
@@ -433,10 +509,10 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                 {data.categories.map((cat) => (
                   <div key={cat.name}>
                     <div style={{
-                      backgroundColor: '#f3f4f6',
+                      backgroundColor: app.secondaryColor || '#f3f4f6',
                       padding: '12px 20px',
                       fontWeight: 'bold',
-                      color: app.categoryTextColor || '#3b82f6',
+                      color: app.categoryTextColor || app.primaryColor || '#3b82f6',
                       fontSize: '1em',
                       borderBottom: '1px solid #e5e7eb',
                       textTransform: 'uppercase'
@@ -459,14 +535,14 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                         </span>
                         <div>
                           {feat.type === "boolean" ? (
-                            plan.features[feat.name] ? (
+                            getFeatureValue(plan.features, featureLookups[planIdx], feat.name) ? (
                               <span style={{ color: '#10b981', fontSize: '1.5em' }}>✓</span>
                             ) : (
                               <span style={{ color: '#ef4444', fontSize: '1.5em' }}>✗</span>
                             )
                           ) : (
                             <span style={{ fontWeight: '500', fontSize: '0.95em' }}>
-                              {(plan.features[feat.name] as string) || "-"}
+                              {(getFeatureValue(plan.features, featureLookups[planIdx], feat.name) as string) || "-"}
                             </span>
                           )}
                         </div>
@@ -476,7 +552,8 @@ export const ComparisonTablePreview: React.FC<ComparisonTablePreviewProps> = ({ 
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </>
