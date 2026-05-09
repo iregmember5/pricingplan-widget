@@ -217,7 +217,6 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         '/api/payments/vault/vgs-collect/',
         { headers: { 'Content-Type': 'application/json' } },
         async (status: number, data: any) => {
-          console.log('VGS response status:', status, 'data:', JSON.stringify(data));
         // VGS returns token at data.token or data.data.token depending on backend shape
         const token = data?.token || data?.data?.token;
         const aliased_card = data?.aliased_card || data?.data?.aliased_card;

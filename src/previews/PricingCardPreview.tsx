@@ -144,9 +144,10 @@ export const PricingCardPreview: React.FC<PricingCardPreviewProps> = ({ data, ap
     return (
       <PaymentFlow
         widgetId={widgetId || ''}
-        planId={selectedPlan.planId}
+        planId={selectedPlan.planId || selectedPlan.plan_id || ''}
         interval={data.interval}
-        paymentType={data.paymentType || 'one_time'}
+        paymentType={data.paymentType || data.payment_type || 'one_time'}
+        amount={selectedPlan.price_amount ? (selectedPlan.price_amount / 100).toFixed(2) : (selectedPlan.price || '0.00').replace(/[^0-9.]/g, '')}
         collectTaxDocuments={appearance.collectTaxDocuments}
         widgetBackgroundColor={appearance.widgetBackgroundColor}
         onBack={() => {

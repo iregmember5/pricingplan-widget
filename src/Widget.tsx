@@ -10,6 +10,7 @@ const NEW_PRICING_TYPES = new Set([
   'new_pricing_widget',
   'new_pricing_template',
   'pricing_template_json',
+  'pricing_columns',
 ]);
 
 function hasRenderableNewPricingDoc(doc: any) {
@@ -26,7 +27,7 @@ function isObject(value: any): value is Record<string, any> {
 }
 
 function collectCheckoutPlans(doc: any) {
-  const plans: Array<{ planId: string; buttonText: string; paymentType?: string; interval?: string }> = [];
+  const plans: Array<{ planId: string; buttonText: string; paymentType?: string; interval?: string; price?: string }> = [];
   const seen = new Set<string>();
 
   const pushPlan = (entry: any) => {
@@ -40,8 +41,10 @@ function collectCheckoutPlans(doc: any) {
       paymentType: `${entry.paymentType || doc?.paymentType || doc?.payment_type || ''}`.trim().toLowerCase() || undefined,
       interval: `${entry.interval || doc?.interval || ''}`.trim().toLowerCase() || undefined,
       price: entry.price_amount
-        ? (entry.price_amount / 100).toFixed(2)           // price_amount is in cents
-        : `${entry.priceAmount || entry.price || ''}`.trim().replace(/[^0-9.]/g, '') || undefined,
+        ? (entry.price_amount / 100).toFixed(2)
+        : entry.priceAmount
+          ? (entry.priceAmount / 100).toFixed(2)
+          : `${entry.price || ''}`.trim().replace(/[^0-9.]/g, '') || undefined,
     });
   };
 
@@ -116,14 +119,12 @@ function hasCustomLinksInDoc(doc: any) {
 }
 
 function shouldUseNewWidgetPayment(doc: any, plans: Array<{ planId: string }>) {
-  const gateway = `${doc?.payment_gateway || ''}`.trim().toLowerCase();
+  const gateway = `${doc?.payment_gateway || doc?.paymentGateway || ''}`.trim().toLowerCase();
   const buttonAction = `${doc?.globalButtonAction || ''}`.trim().toLowerCase();
 
   if (buttonAction === 'link') return false;
   if (gateway === 'stripe' || buttonAction === 'payment') return true;
 
-  // Fallback for older saved templates: if they expose plan targets and no custom links,
-  // treat buttons as payment CTAs.
   return plans.length > 0 && !hasCustomLinksInDoc(doc);
 }
 
@@ -201,7 +202,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
-  const [selectedPlan, setSelectedPlan] = useState<{ planId: string; paymentType?: string; interval?: string } | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{ planId: string; paymentType?: string; interval?: string; price?: string } | null>(null);
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
   const newPreviewRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -290,7 +291,14 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
             if (cancelled) return;
             setActualWidgetId(widget?.id || widgetId);
 
-            if (NEW_PRICING_TYPES.has(widgetType) || innerData?.config_json) {
+            if (widgetType === 'pricing_columns') {
+              // pricing_columns uses cards array — keep normalizeWidgetData, not normalizeTemplateDoc
+              setContent({
+                type: 'pricing_columns',
+                data: normalizeWidgetData(innerData),
+                appearance: normalizeAppearance(appearance),
+              });
+            } else if (NEW_PRICING_TYPES.has(widgetType) || innerData?.config_json) {
               const normalizedDoc = normalizeTemplateDoc(innerData);
               setContent({
                 type: widgetType || 'new_pricing_widget',
