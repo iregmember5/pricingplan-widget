@@ -31,14 +31,17 @@ function collectCheckoutPlans(doc: any) {
 
   const pushPlan = (entry: any) => {
     if (!isObject(entry)) return;
-    const planId = `${entry.planId || entry.id || ''}`.trim();
+    const planId = `${entry.planId || entry.plan_id || entry.id || ''}`.trim();
     if (!planId || seen.has(planId)) return;
     seen.add(planId);
     plans.push({
       planId,
-      buttonText: `${entry.buttonText || entry.text || ''}`.trim(),
-      paymentType: `${entry.paymentType || doc?.paymentType || ''}`.trim().toLowerCase() || undefined,
+      buttonText: `${entry.buttonText || entry.button_text || entry.text || ''}`.trim(),
+      paymentType: `${entry.paymentType || doc?.paymentType || doc?.payment_type || ''}`.trim().toLowerCase() || undefined,
       interval: `${entry.interval || doc?.interval || ''}`.trim().toLowerCase() || undefined,
+      price: entry.price_amount
+        ? (entry.price_amount / 100).toFixed(2)           // price_amount is in cents
+        : `${entry.priceAmount || entry.price || ''}`.trim().replace(/[^0-9.]/g, '') || undefined,
     });
   };
 
@@ -188,6 +191,8 @@ function normalizeWidgetData(raw: any): Record<string, any> {
       buttonLink: c.button_link ?? c.buttonLink,
       buttonLinkTarget: c.button_link_target ?? c.buttonLinkTarget,
       planId: c.plan_id ?? c.planId,
+      useCustomPriceText: c.use_custom_price_text ?? c.useCustomPriceText,
+      customPriceText: c.custom_price_text ?? c.customPriceText,
     })),
   };
 }
@@ -342,14 +347,39 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     const explicitPlanId = `${clickedButton.getAttribute('data-plan-id') || ''}`.trim();
     const explicitPaymentType = `${clickedButton.getAttribute('data-payment-type') || ''}`.trim().toLowerCase();
     const explicitInterval = `${clickedButton.getAttribute('data-interval') || ''}`.trim().toLowerCase();
+    const explicitPrice = `${clickedButton.getAttribute('data-price') || ''}`.trim();
+
+    // Try to find price from nearest price-block in the DOM if not in data attribute
+    const resolvePrice = (): string => {
+      if (explicitPrice) return explicitPrice.replace(/[^0-9.]/g, '');
+      // walk up DOM tree to find a price-block sibling
+      let el: HTMLElement | null = clickedButton;
+      while (el) {
+        // look for a data-price attribute on any ancestor or sibling
+        const priceEl = el.querySelector('[data-price]');
+        if (priceEl) return (priceEl.getAttribute('data-price') || '').replace(/[^0-9.]/g, '');
+        // look for text that looks like a price (e.g. "$4,990" or "4990")
+        const allText = el.querySelectorAll('span, div, p');
+        for (const t of Array.from(allText)) {
+          const txt = (t.textContent || '').trim();
+          const match = txt.match(/^\$?([\d,]+(?:\.\d{1,2})?)$/);
+          if (match) return match[1].replace(/,/g, '');
+        }
+        el = el.parentElement;
+        if (el === document.body) break;
+      }
+      return '0.00';
+    };
 
     if (explicitPlanId) {
       event.preventDefault();
       event.stopPropagation();
+      const matchedPlan = newWidgetPlans.find(p => p.planId === explicitPlanId);
       setSelectedPlan({
         planId: explicitPlanId,
         paymentType: explicitPaymentType || 'one_time',
         interval: explicitInterval || undefined,
+        price: matchedPlan?.price || resolvePrice(),
       });
       setShowPaymentFlow(true);
       return;
@@ -369,6 +399,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       planId: fallbackPlan.planId,
       paymentType: fallbackPlan.paymentType || 'one_time',
       interval: fallbackPlan.interval,
+      price: fallbackPlan.price || resolvePrice(),
     });
     setShowPaymentFlow(true);
   };
@@ -413,7 +444,9 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
         planId={selectedPlan.planId}
         paymentType={selectedPlan.paymentType || 'one_time'}
         interval={selectedPlan.paymentType === 'subscription' ? selectedPlan.interval : undefined}
+        amount={selectedPlan.price || '0.00'}
         useNewPaymentApi
+        paymentMethod={content.data?.payment_method === 'stripe_direct' ? 'stripe_direct' : 'vault'}
         onBack={() => {
           setShowPaymentFlow(false);
           setSelectedPlan(null);

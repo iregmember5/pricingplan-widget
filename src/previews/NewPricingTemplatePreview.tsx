@@ -252,10 +252,12 @@ function getPlanButtonDataAttrs(plan) {
     const planId = `${plan?.planId || plan?.id || ""}`.trim();
     const paymentType = `${plan?.paymentType || ""}`.trim().toLowerCase();
     const interval = `${plan?.interval || ""}`.trim().toLowerCase();
+    const price = `${plan?.priceAmount || plan?.price_amount || plan?.price || ""}`.trim().replace(/[^0-9.]/g, '');
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
     if (interval) attrs["data-interval"] = interval;
+    if (price) attrs["data-price"] = price;
     return attrs;
 }
 
@@ -263,10 +265,12 @@ function getNodeButtonDataAttrs(node) {
     const planId = `${node?.planId || node?.id || ""}`.trim();
     const paymentType = `${node?.paymentType || ""}`.trim().toLowerCase();
     const interval = `${node?.interval || ""}`.trim().toLowerCase();
+    const price = `${node?.price || node?.amount || ""}`.trim().replace(/[^0-9.]/g, '');
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
     if (interval) attrs["data-interval"] = interval;
+    if (price) attrs["data-price"] = price;
     return attrs;
 }
 
@@ -2157,7 +2161,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
 
     if (node.style === "stacked-currency") {
       return (
-        <div style={{ lineHeight: 1, fontFamily }}>
+        <div data-price={`${amount}`.replace(/[^0-9.]/g, '')} style={{ lineHeight: 1, fontFamily }}>
           <div style={{ color, fontSize: 18 * size, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>{currency}</div>
           <span style={{ color, fontWeight: 900, fontSize: 54 * size, letterSpacing: -2 }}>{amount}{suffix}</span>
           {period && <div style={{ color, fontSize: 12 * size, opacity: 0.7, marginTop: 4 }}>{period}</div>}
