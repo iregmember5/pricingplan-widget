@@ -119,11 +119,14 @@ function hasCustomLinksInDoc(doc: any) {
 }
 
 function shouldUseNewWidgetPayment(doc: any, plans: Array<{ planId: string }>) {
-  const gateway = `${doc?.payment_gateway || doc?.paymentGateway || ''}`.trim().toLowerCase();
   const buttonAction = `${doc?.globalButtonAction || ''}`.trim().toLowerCase();
+  const paymentType = `${doc?.payment_type || doc?.paymentType || ''}`.trim().toLowerCase();
 
   if (buttonAction === 'link') return false;
-  if (gateway === 'stripe' || buttonAction === 'payment') return true;
+  if (buttonAction === 'payment') return true;
+  
+  // If payment_type is set (one_time or subscription), enable payment
+  if (paymentType === 'one_time' || paymentType === 'subscription') return true;
 
   return plans.length > 0 && !hasCustomLinksInDoc(doc);
 }

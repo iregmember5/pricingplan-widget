@@ -1,10 +1,11 @@
 export interface RouterChargePayload {
   vault_token: string;
   vault_provider: string;
-  target_gateway: string;
+  target_gateway?: string;
   amount: string;
-  business_email: string;
-  widget_id?: string;
+  currency: string;
+  business_email?: string;
+  widget_id: string;
   aliased_card?: { exp_month: string; exp_year: string; cvc: string };
 }
 

@@ -14,6 +14,7 @@ interface PaymentFlowProps {
   interval?: string;
   paymentType: string;
   amount?: string;
+  currency?: string;
   useNewPaymentApi?: boolean;
   paymentMethod?: 'stripe_direct' | 'vault';
   onBack: () => void;
@@ -25,6 +26,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   interval,
   paymentType,
   amount = '0.00',
+  currency = 'USD',
   useNewPaymentApi = false,
   paymentMethod = 'vault',
   onBack
@@ -235,9 +237,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           const result = await routerCharge({
             vault_token: token,
             vault_provider: 'vgs',
-            target_gateway: 'stripe',
             amount,
-            business_email: email,
+            currency: currency.toUpperCase(),
             widget_id: widgetId,
             aliased_card: resolvedCard,
           });

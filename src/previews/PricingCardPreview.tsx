@@ -148,6 +148,7 @@ export const PricingCardPreview: React.FC<PricingCardPreviewProps> = ({ data, ap
         interval={data.interval}
         paymentType={data.paymentType || data.payment_type || 'one_time'}
         amount={selectedPlan.price_amount ? (selectedPlan.price_amount / 100).toFixed(2) : (selectedPlan.price || '0.00').replace(/[^0-9.]/g, '')}
+        currency={data.currency || 'USD'}
         collectTaxDocuments={appearance.collectTaxDocuments}
         widgetBackgroundColor={appearance.widgetBackgroundColor}
         onBack={() => {
@@ -845,7 +846,7 @@ export const PricingCardPreview: React.FC<PricingCardPreviewProps> = ({ data, ap
                   </ul>
 
                   <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
-                    {data.payment_gateway === "stripe" ? (
+                    {(data.payment_type === "one_time" || data.payment_type === "subscription" || data.paymentType === "one_time" || data.paymentType === "subscription") ? (
                       <button
                         onClick={() => { setSelectedPlan(card); setShowPaymentFlow(true); }}
                         style={{
