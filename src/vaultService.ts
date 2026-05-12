@@ -4,8 +4,8 @@ export interface VaultPublicKeys {
 
 export async function getVaultPublicKeys(): Promise<VaultPublicKeys> {
   const urls = [
-    'https://mypowerly.com/v1/api/payments/vault/public-keys/',
     'https://esign-admin.signmary.com/api/payments/vault/public-keys/',
+    'https://mypowerly.com/v1/api/payments/vault/public-keys/',
   ];
   for (const url of urls) {
     try {

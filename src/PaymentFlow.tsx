@@ -3,6 +3,7 @@ import { StripeIntegration } from './StripeIntegration';
 import { StripeProvider } from './StripeProvider';
 import { getVaultPublicKeys } from './vaultService';
 import { routerCharge } from './routerService';
+import { routerInit } from './routerInitService';
 
 declare global {
   interface Window { VGSCollect: any; }
@@ -49,11 +50,40 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const handlePaymentMethodSelect = async (method: string) => {
     if (method !== 'credit_card' || !email) return;
 
-    // Route to vault (Method 2) if configured
-    if (paymentMethod === 'vault') {
-      setVaultLoading(true);
-      setVaultError('');
-      try {
+    setLoading(true);
+    setVaultError('');
+
+    try {
+      // Step 1: Call /router/init/ to determine flow
+      const initResult = await routerInit({
+        widget_id: widgetId,
+        amount,
+        currency: currency.toUpperCase(),
+        customer_email: email,
+      });
+
+      if (!initResult.success) {
+        setVaultError('Failed to initialize payment');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Handle based on flow
+      if (initResult.flow === 'lemonsqueezy' && initResult.checkout_url) {
+        // Redirect to Lemon Squeezy checkout
+        window.location.href = initResult.checkout_url;
+        return;
+      }
+
+      if (initResult.flow === 'paypal' && initResult.approval_url) {
+        // Redirect to PayPal approval
+        window.location.href = initResult.approval_url;
+        return;
+      }
+
+      // Step 3: Flow is 'vgs' - show card form
+      if (initResult.flow === 'vgs' && paymentMethod === 'vault') {
+        setVaultLoading(true);
         const keys = await getVaultPublicKeys();
         const { vault_id, environment } = keys.vgs;
         if (!window.VGSCollect) {
@@ -67,8 +97,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         }
         const form = window.VGSCollect.create(vault_id, environment, () => {});
         setVgsForm(form);
-        setStep('vault'); // render DOM divs first
-        // mount fields after DOM is painted
+        setStep('vault');
         setTimeout(() => {
           const fieldStyle = { base: { fontSize: '15px', color: '#111827', '::placeholder': { color: '#9ca3af' } }, invalid: { color: '#dc2626' } };
           form.field('#vgs-wgt-number', {
@@ -94,12 +123,13 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             style: fieldStyle
           });
         }, 100);
-      } catch (err: any) {
-        setVaultError(err.message || 'Failed to load card form');
-      } finally {
         setVaultLoading(false);
+        return;
       }
-      return;
+    } catch (err: any) {
+      setVaultError(err.message || 'Failed to initialize payment');
+    } finally {
+      setLoading(false);
     }
 
     // Method 1 — Stripe direct (commented out, Method 2 is default)
@@ -242,6 +272,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             widget_id: widgetId,
             aliased_card: resolvedCard,
           });
+          
           if (result.success) {
             setConfirmedPaymentId(String(result.transaction_id || result.gateway_tx_id));
             setStep('success');

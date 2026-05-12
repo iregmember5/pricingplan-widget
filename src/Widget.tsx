@@ -207,7 +207,24 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<{ planId: string; paymentType?: string; interval?: string; price?: string } | null>(null);
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentTransactionId, setPaymentTransactionId] = useState<string>('');
   const newPreviewRootRef = useRef<HTMLDivElement | null>(null);
+
+  // Check for PayPal/Lemon Squeezy return
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const paymentSuccess = urlParams.get('payment_success');
+    const transactionId = urlParams.get('transaction_id');
+    
+    if (paymentSuccess === 'true' && transactionId) {
+      setPaymentSuccess(true);
+      setPaymentTransactionId(transactionId);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const newWidgetPlans = useMemo(() => {
     if (!content?.data || !NEW_PRICING_TYPES.has(content?.type)) return [];
@@ -238,13 +255,13 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     }
 
     const publicTemplateUrls = [
-      `https://mypowerly.com/v1/api/widgets/new-pricing-widget/public/${widgetId}/`,
       `https://esign-admin.signmary.com/api/widgets/new-pricing-widget/public/${widgetId}/`,
+      `https://mypowerly.com/v1/api/widgets/new-pricing-widget/public/${widgetId}/`,
     ];
 
     const legacyWidgetUrls = [
-      `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
       `https://esign-admin.signmary.com/api/widgets/widget-data/public/${widgetId}/`,
+      `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
     ];
 
     const tryJsonFetch = async (url: string) => {
@@ -439,6 +456,44 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
         background: isEmbedMode() ? 'transparent' : 'white'
       }}>
         Widget not found or invalid ID
+      </div>
+    );
+  }
+
+  // Show success screen if returning from PayPal/Lemon Squeezy
+  if (paymentSuccess) {
+    return (
+      <div style={{ maxWidth: '400px', margin: '0 auto', padding: '40px 20px', textAlign: 'center' }}>
+        <div style={{ fontSize: '64px', marginBottom: '20px' }}>✅</div>
+        <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '12px', color: '#10b981' }}>
+          Payment Successful!
+        </h2>
+        <p style={{ color: '#6b7280', marginBottom: '20px' }}>
+          Your payment has been processed successfully.
+        </p>
+        {paymentTransactionId && (
+          <p style={{ fontSize: '14px', color: '#9ca3af' }}>
+            Transaction ID: {paymentTransactionId}
+          </p>
+        )}
+        <button
+          onClick={() => {
+            setPaymentSuccess(false);
+            setPaymentTransactionId('');
+          }}
+          style={{
+            marginTop: '30px',
+            padding: '12px 24px',
+            background: '#7c3aed',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '500'
+          }}
+        >
+          Back to Plans
+        </button>
       </div>
     );
   }

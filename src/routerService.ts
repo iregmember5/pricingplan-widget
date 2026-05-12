@@ -15,6 +15,10 @@ export interface RouterChargeResponse {
   gateway_tx_id: string;
   status: string;
   error: string | null;
+  data?: {
+    checkout_url?: string;
+    [key: string]: any;
+  };
 }
 
 export async function routerCharge(payload: RouterChargePayload): Promise<RouterChargeResponse> {
