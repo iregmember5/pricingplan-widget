@@ -108,20 +108,11 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             showCardIcon: true,
             style: fieldStyle
           });
-          form.field('#vgs-wgt-exp-month', {
-            type: 'text',
-            name: 'card.exp_month',
-            placeholder: 'MM',
-            validations: ['required'],
-            maxLength: 2,
-            style: fieldStyle
-          });
-          form.field('#vgs-wgt-exp-year', {
-            type: 'text',
-            name: 'card.exp_year',
-            placeholder: 'YY',
-            validations: ['required'],
-            maxLength: 2,
+          form.field('#vgs-wgt-expiry', {
+            type: 'card-expiration-date',
+            name: 'card.exp',
+            placeholder: 'MM / YY',
+            validations: ['required', 'validCardExpirationDate'],
             style: fieldStyle
           });
           form.field('#vgs-wgt-cvc', {
@@ -315,12 +306,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             </div>
             <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Exp Month</label>
-                <div id="vgs-wgt-exp-month" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Exp Year</label>
-                <div id="vgs-wgt-exp-year" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Expiry</label>
+                <div id="vgs-wgt-expiry" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>CVC</label>
