@@ -108,11 +108,20 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             showCardIcon: true,
             style: fieldStyle
           });
-          form.field('#vgs-wgt-expiry', {
-            type: 'card-expiration-date',
-            name: 'card.exp',
-            placeholder: 'MM / YY',
-            validations: ['required', 'validCardExpirationDate'],
+          form.field('#vgs-wgt-exp-month', {
+            type: 'text',
+            name: 'card.exp_month',
+            placeholder: 'MM',
+            validations: ['required'],
+            maxLength: 2,
+            style: fieldStyle
+          });
+          form.field('#vgs-wgt-exp-year', {
+            type: 'text',
+            name: 'card.exp_year',
+            placeholder: 'YY',
+            validations: ['required'],
+            maxLength: 2,
             style: fieldStyle
           });
           form.field('#vgs-wgt-cvc', {
@@ -253,16 +262,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         const token = data?.token || data?.data?.token;
         const aliased_card = data?.aliased_card || data?.data?.aliased_card;
 
-        // parse card.exp "MM / YYYY" into exp_month and exp_year if backend needs them split
-        const rawExp: string = data?.card?.exp || data?.['card.exp'] || data?.['card[exp]'] || '';
-        const [expMonth, expYear] = rawExp.replace(/\s/g, '').split('/');
-        const resolvedCard = aliased_card || (rawExp ? { exp_month: expMonth, exp_year: expYear } : undefined);
-
         if (status !== 200 || !token) {
           setVaultError(data?.message || data?.error || 'Card tokenization failed');
           setVaultSubmitting(false);
           return;
         }
+
         try {
           const result = await routerCharge({
             vault_token: token,
@@ -270,7 +275,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             amount,
             currency: currency.toUpperCase(),
             widget_id: widgetId,
-            aliased_card: resolvedCard,
+            aliased_card: aliased_card || undefined,  // Send as-is, let backend handle
           });
           
           if (result.success) {
@@ -310,8 +315,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             </div>
             <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Expiry</label>
-                <div id="vgs-wgt-expiry" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Exp Month</label>
+                <div id="vgs-wgt-exp-month" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>Exp Year</label>
+                <div id="vgs-wgt-exp-year" style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', backgroundColor: 'white', minHeight: '48px' }} />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>CVC</label>
