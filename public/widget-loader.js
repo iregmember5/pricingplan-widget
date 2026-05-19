@@ -29,7 +29,8 @@
 
     const iframe = document.createElement('iframe');
     const baseUrl = resolveBaseUrl(script);
-    iframe.src = baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true';
+    const isForm = container.getAttribute('data-type') === 'form';
+    iframe.src = baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true' + (isForm ? '&type=form' : '');
     iframe.style.cssText = [
       'width: 100% !important',
       'min-height: 800px !important',
