@@ -1,4 +1,97 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+
+// ── Signature Pad ─────────────────────────────────────────────────────────────
+const SignaturePad: React.FC<{ fieldId: string; value: string; onChange: (val: string) => void; error?: string }> = ({ fieldId, value, onChange, error }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+  }, []);
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawing.current = true;
+    const ctx = canvas.getContext('2d')!;
+    const pos = getPos(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const pos = getPos(e, canvas);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  };
+
+  const stopDraw = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) onChange(canvas.toDataURL());
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    onChange('');
+  };
+
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#374151' }}>
+        {/* label passed from parent */}
+      </label>
+      <div style={{ border: `1px solid ${error ? '#ef4444' : '#2563eb'}`, borderRadius: '6px', overflow: 'hidden', background: '#fff' }}>
+        <canvas
+          ref={canvasRef}
+          width={560}
+          height={160}
+          style={{ display: 'block', width: '100%', height: '160px', cursor: 'crosshair', touchAction: 'none' }}
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={stopDraw}
+          onMouseLeave={stopDraw}
+          onTouchStart={startDraw}
+          onTouchMove={draw}
+          onTouchEnd={stopDraw}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderTop: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <span style={{ fontSize: '12px', color: '#9ca3af' }}>Sign above</span>
+          <button type="button" onClick={clear} style={{ fontSize: '12px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px' }}>
+            Clear
+          </button>
+        </div>
+      </div>
+      {value && (
+        <img src={value} alt="signature preview" style={{ marginTop: '6px', height: '40px', border: '1px solid #e5e7eb', borderRadius: '4px' }} />
+      )}
+      {error && <p style={{ color: '#ef4444', fontSize: '13px', marginTop: '4px' }}>{error}</p>}
+    </div>
+  );
+};
 
 const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -209,6 +302,21 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
         return (
           <div key={key} style={{ marginBottom: '20px', color: textColor, fontSize: config.textSize || '16px' }}>
             {field.label && <p>{field.label}</p>}
+          </div>
+        );
+
+      case 'signature':
+        return (
+          <div key={key} style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>
+              {field.label}{field.required && <span style={{ color: '#ef4444', marginLeft: '2px' }}>*</span>}
+            </label>
+            <SignaturePad
+              fieldId={field.id}
+              value={formData[field.id] || ''}
+              onChange={val => handleChange(field.id, val)}
+              error={error}
+            />
           </div>
         );
 
