@@ -12,10 +12,10 @@
     }
   }
 
-  function loadWidget(slug, type) {
+  function loadWidget(slug) {
     if (!slug) return;
 
-    const containerId = type === 'form' ? slug : 'widget-' + slug;
+    const containerId = 'widget-' + slug;
     let container = document.getElementById(containerId) || document.getElementById(slug);
 
     if (!container) {
@@ -29,8 +29,7 @@
 
     const iframe = document.createElement('iframe');
     const baseUrl = resolveBaseUrl(script);
-    const typeParam = type === 'form' ? '&type=form' : '';
-    iframe.src = baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true' + typeParam;
+    iframe.src = baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true';
     iframe.style.cssText = [
       'width: 100% !important',
       'min-height: 800px !important',
@@ -75,20 +74,10 @@
       const url = new URL(script.src, window.location.href);
       const slug = url.searchParams.get('slug');
       if (slug) {
-        // Detect widget type:
-        // Form widgets have <div id="{slug}"> exactly
-        // Pricing widgets have <div id="widget-{slug}"> or no matching div
-        function detectTypeAndLoad() {
-          const exactDiv = document.getElementById(slug);
-          const pricingDiv = document.getElementById('widget-' + slug);
-          const isForm = exactDiv && !pricingDiv;
-          loadWidget(slug, isForm ? 'form' : 'pricing');
-        }
-
         if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', detectTypeAndLoad);
+          document.addEventListener('DOMContentLoaded', () => loadWidget(slug));
         } else {
-          detectTypeAndLoad();
+          loadWidget(slug);
         }
       }
     } catch (e) {
