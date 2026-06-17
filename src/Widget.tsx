@@ -33,6 +33,39 @@ function unwrapTemplatePayload(payload: any) {
   return payload;
 }
 
+function resolveRouterWidgetId(payload: any, fallback: string) {
+  const source = unwrapTemplatePayload(payload);
+  return `${payload?.widget_id || payload?.widgetId || payload?.slug || source?.widget_id || source?.widgetId || source?.slug || fallback}`.trim();
+}
+
+function collectRouterWidgetIds(fallback: string, ...payloads: any[]) {
+  const ids = new Set<string>();
+  const add = (value: any) => {
+    const id = `${value ?? ''}`.trim();
+    if (id && id !== 'undefined') ids.add(id);
+  };
+
+  add(fallback);
+  payloads.forEach((payload) => {
+    if (!payload) return;
+    const source = unwrapTemplatePayload(payload);
+    add(payload.widget_id);
+    add(payload.widgetId);
+    add(payload.slug);
+    add(payload.id);
+    add(payload.data?.id);
+    add(payload.data?.widget_id);
+    add(payload.data?.widgetId);
+    add(payload.data?.slug);
+    add(source?.id);
+    add(source?.widget_id);
+    add(source?.widgetId);
+    add(source?.slug);
+  });
+
+  return Array.from(ids);
+}
+
 function isEmbedMode() {
   const params = new URLSearchParams(window.location.search);
   return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
@@ -42,9 +75,69 @@ function isObject(value: any): value is Record<string, any> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+type CheckoutPlan = {
+  planId: string;
+  buttonText: string;
+  paymentType?: string;
+  interval?: string;
+  price?: string;
+  currency?: string;
+  paymentGateway?: string;
+  trialDays?: number;
+  prorationBehavior?: string;
+};
+
+function normalizeGatewaySlug(value: any) {
+  const raw = `${value ?? ''}`.trim().toLowerCase();
+  if (!raw) return '';
+  if (raw.includes('lemon')) return 'lemonsqueezy';
+  if (raw.includes('pay safe') || raw.includes('paysafe')) return 'paysafe';
+  if (raw.includes('pay pal') || raw.includes('paypal')) return 'paypal';
+  if (raw.includes('stripe')) return 'stripe';
+  return raw.replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeCurrencyCode(value: any, fallback = 'USD') {
+  const raw = `${value ?? ''}`.trim();
+  if (!raw) return fallback;
+  if (/^[a-z]{3}$/i.test(raw)) return raw.toUpperCase();
+  if (raw === '$' || raw.toLowerCase().includes('usd')) return 'USD';
+  return fallback;
+}
+
+function getDocPaymentGateway(doc: any) {
+  const explicitGateway = normalizeGatewaySlug(doc?.payment_gateway ?? doc?.paymentGateway);
+  if (explicitGateway) return explicitGateway;
+
+  const priorityGroups = doc?.payment_gateway_priorities ?? doc?.paymentGatewayPriorities;
+  if (isObject(priorityGroups)) {
+    const ordered = ['creditCard', 'bank', 'crypto']
+      .flatMap((group) => Array.isArray(priorityGroups[group]) ? priorityGroups[group] : [])
+      .filter((gateway: any) => gateway && gateway.enabled !== false)
+      .sort((a: any, b: any) => Number(a?.priority ?? 999) - Number(b?.priority ?? 999));
+    const firstGateway = normalizeGatewaySlug(ordered[0]?.gateway);
+    if (firstGateway) return firstGateway;
+  }
+
+  return undefined;
+}
+
 function collectCheckoutPlans(doc: any) {
-  const plans: Array<{ planId: string; buttonText: string; paymentType?: string; interval?: string; price?: string }> = [];
+  const plans: CheckoutPlan[] = [];
   const seen = new Set<string>();
+  const docPaymentType = `${doc?.paymentType || doc?.payment_type || ''}`.trim().toLowerCase() || undefined;
+  const docInterval = `${doc?.interval || ''}`.trim().toLowerCase() || undefined;
+  const docCurrency = normalizeCurrencyCode(doc?.currency || doc?.globalCurrency);
+  const docPaymentGateway = getDocPaymentGateway(doc);
+  const docTrialDays = Number(doc?.trialDays ?? doc?.trial_days);
+  const docProrationBehavior = `${doc?.proration_behavior || doc?.prorationBehavior || ''}`.trim() || undefined;
+
+  const getTrialDays = (entry: any) => {
+    const entryTrialDays = Number(entry?.trialDays ?? entry?.trial_days);
+    if (Number.isFinite(entryTrialDays) && entryTrialDays > 0) return entryTrialDays;
+    if (Number.isFinite(docTrialDays) && docTrialDays > 0) return docTrialDays;
+    return undefined;
+  };
 
   const pushPlan = (entry: any) => {
     if (!isObject(entry)) return;
@@ -54,13 +147,17 @@ function collectCheckoutPlans(doc: any) {
     plans.push({
       planId,
       buttonText: `${entry.buttonText || entry.button_text || entry.text || ''}`.trim(),
-      paymentType: `${entry.paymentType || doc?.paymentType || doc?.payment_type || ''}`.trim().toLowerCase() || undefined,
-      interval: `${entry.interval || doc?.interval || ''}`.trim().toLowerCase() || undefined,
+      paymentType: `${entry.paymentType || entry.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
+      interval: `${entry.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
       price: entry.price_amount
         ? (entry.price_amount / 100).toFixed(2)
         : entry.priceAmount
           ? (entry.priceAmount / 100).toFixed(2)
           : `${entry.price || ''}`.trim().replace(/[^0-9.]/g, '') || undefined,
+      currency: normalizeCurrencyCode(entry.currency, docCurrency),
+      paymentGateway: normalizeGatewaySlug(entry.payment_gateway ?? entry.paymentGateway) || docPaymentGateway,
+      trialDays: getTrialDays(entry),
+      prorationBehavior: `${entry.proration_behavior || entry.prorationBehavior || docProrationBehavior || ''}`.trim() || undefined,
     });
   };
 
@@ -83,8 +180,12 @@ function collectCheckoutPlans(doc: any) {
     if (node.type === 'photo-card' && (node.planId || node.id)) {
       activePlan = {
         planId: `${node.planId || node.id}`.trim(),
-        paymentType: `${node.paymentType || doc?.paymentType || ''}`.trim().toLowerCase() || undefined,
-        interval: `${node.interval || doc?.interval || ''}`.trim().toLowerCase() || undefined,
+        paymentType: `${node.paymentType || node.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
+        interval: `${node.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
+        currency: normalizeCurrencyCode(node.currency, docCurrency),
+        paymentGateway: normalizeGatewaySlug(node.payment_gateway ?? node.paymentGateway) || docPaymentGateway,
+        trialDays: getTrialDays(node),
+        prorationBehavior: `${node.proration_behavior || node.prorationBehavior || docProrationBehavior || ''}`.trim() || undefined,
       };
     }
 
@@ -95,8 +196,12 @@ function collectCheckoutPlans(doc: any) {
         plans.push({
           planId,
           buttonText: `${node.text || node.buttonText || ''}`.trim(),
-          paymentType: `${node.paymentType || activePlan?.paymentType || doc?.paymentType || ''}`.trim().toLowerCase() || undefined,
-          interval: `${node.interval || activePlan?.interval || doc?.interval || ''}`.trim().toLowerCase() || undefined,
+          paymentType: `${node.paymentType || node.payment_type || activePlan?.paymentType || docPaymentType || ''}`.trim().toLowerCase() || undefined,
+          interval: `${node.interval || activePlan?.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
+          currency: normalizeCurrencyCode(node.currency, activePlan?.currency || docCurrency),
+          paymentGateway: normalizeGatewaySlug(node.payment_gateway ?? node.paymentGateway) || activePlan?.paymentGateway || docPaymentGateway,
+          trialDays: getTrialDays(node) || activePlan?.trialDays,
+          prorationBehavior: `${node.proration_behavior || node.prorationBehavior || activePlan?.prorationBehavior || docProrationBehavior || ''}`.trim() || undefined,
         });
       }
     }
@@ -221,7 +326,8 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
-  const [selectedPlan, setSelectedPlan] = useState<{ planId: string; paymentType?: string; interval?: string; price?: string } | null>(null);
+  const [routerWidgetIds, setRouterWidgetIds] = useState<string[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<CheckoutPlan | null>(null);
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentTransactionId, setPaymentTransactionId] = useState<string>('');
@@ -298,7 +404,19 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
             if (hasRenderableNewPricingDoc(normalizedDoc)) {
               if (cancelled) return;
-              setActualWidgetId(result?.id || widgetId);
+              const candidateIds = collectRouterWidgetIds(widgetId, result, normalizedDoc);
+              for (const legacyUrl of legacyWidgetUrls) {
+                try {
+                  const legacyResult = await tryJsonFetch(legacyUrl);
+                  candidateIds.push(...collectRouterWidgetIds(widgetId, legacyResult, legacyResult?.data, legacyResult?.data?.data));
+                  break;
+                } catch (legacyErr) {
+                  console.warn(`Legacy widget id lookup failed for ${legacyUrl}:`, legacyErr);
+                }
+              }
+              const uniqueCandidateIds = Array.from(new Set(candidateIds));
+              setRouterWidgetIds(uniqueCandidateIds);
+              setActualWidgetId(resolveRouterWidgetId(result, widgetId));
               setContent({
                 type: 'new_pricing_template',
                 data: normalizedDoc,
@@ -326,6 +444,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
             if (cancelled) return;
             setActualWidgetId(widget?.id || widgetId);
+            setRouterWidgetIds(collectRouterWidgetIds(widgetId, result, widget, innerData));
 
             if (widgetType === 'pricing_columns') {
               // pricing_columns uses cards array — keep normalizeWidgetData, not normalizeTemplateDoc
@@ -392,6 +511,11 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     const explicitPaymentType = `${clickedButton.getAttribute('data-payment-type') || ''}`.trim().toLowerCase();
     const explicitInterval = `${clickedButton.getAttribute('data-interval') || ''}`.trim().toLowerCase();
     const explicitPrice = `${clickedButton.getAttribute('data-price') || ''}`.trim();
+    const rawCurrency = `${clickedButton.getAttribute('data-currency') || ''}`.trim();
+    const explicitCurrency = rawCurrency ? normalizeCurrencyCode(rawCurrency) : '';
+    const explicitGateway = normalizeGatewaySlug(clickedButton.getAttribute('data-payment-gateway'));
+    const explicitTrialDays = Number(clickedButton.getAttribute('data-trial-days'));
+    const explicitProration = `${clickedButton.getAttribute('data-proration-behavior') || ''}`.trim();
 
     // Try to find price from nearest price-block in the DOM if not in data attribute
     const resolvePrice = (): string => {
@@ -421,9 +545,14 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       const matchedPlan = newWidgetPlans.find(p => p.planId === explicitPlanId);
       setSelectedPlan({
         planId: explicitPlanId,
-        paymentType: explicitPaymentType || 'one_time',
-        interval: explicitInterval || undefined,
+        buttonText: matchedPlan?.buttonText || `${clickedButton.textContent || ''}`.trim(),
+        paymentType: explicitPaymentType || matchedPlan?.paymentType || 'one_time',
+        interval: explicitInterval || matchedPlan?.interval || undefined,
         price: matchedPlan?.price || resolvePrice(),
+        currency: explicitCurrency || matchedPlan?.currency || normalizeCurrencyCode(content.data?.currency || content.data?.globalCurrency),
+        paymentGateway: explicitGateway || matchedPlan?.paymentGateway || getDocPaymentGateway(content.data),
+        trialDays: Number.isFinite(explicitTrialDays) && explicitTrialDays > 0 ? explicitTrialDays : matchedPlan?.trialDays,
+        prorationBehavior: explicitProration || matchedPlan?.prorationBehavior,
       });
       setShowPaymentFlow(true);
       return;
@@ -441,9 +570,14 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
     setSelectedPlan({
       planId: fallbackPlan.planId,
+      buttonText: fallbackPlan.buttonText,
       paymentType: fallbackPlan.paymentType || 'one_time',
       interval: fallbackPlan.interval,
       price: fallbackPlan.price || resolvePrice(),
+      currency: fallbackPlan.currency || normalizeCurrencyCode(content.data?.currency || content.data?.globalCurrency),
+      paymentGateway: fallbackPlan.paymentGateway || getDocPaymentGateway(content.data),
+      trialDays: fallbackPlan.trialDays,
+      prorationBehavior: fallbackPlan.prorationBehavior,
     });
     setShowPaymentFlow(true);
   };
@@ -523,10 +657,15 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     return (
       <PaymentFlow
         widgetId={actualWidgetId}
+        widgetIds={routerWidgetIds}
         planId={selectedPlan.planId}
         paymentType={selectedPlan.paymentType || 'one_time'}
         interval={selectedPlan.paymentType === 'subscription' ? selectedPlan.interval : undefined}
         amount={selectedPlan.price || '0.00'}
+        currency={selectedPlan.currency || normalizeCurrencyCode(content.data?.currency || content.data?.globalCurrency)}
+        targetGateway={selectedPlan.paymentGateway || getDocPaymentGateway(content.data)}
+        trialDays={selectedPlan.trialDays}
+        prorationBehavior={selectedPlan.prorationBehavior}
         useNewPaymentApi
         paymentMethod={content.data?.payment_method === 'stripe_direct' ? 'stripe_direct' : 'vault'}
         onBack={() => {
@@ -575,5 +714,3 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 };
 
 export default Widget;
-
-

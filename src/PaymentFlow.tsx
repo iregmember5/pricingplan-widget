@@ -11,11 +11,15 @@ declare global {
 
 interface PaymentFlowProps {
   widgetId: string;
+  widgetIds?: string[];
   planId: string;
   interval?: string;
   paymentType: string;
   amount?: string;
   currency?: string;
+  targetGateway?: string;
+  trialDays?: number;
+  prorationBehavior?: string;
   useNewPaymentApi?: boolean;
   paymentMethod?: 'stripe_direct' | 'vault';
   onBack: () => void;
@@ -23,11 +27,15 @@ interface PaymentFlowProps {
 
 export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   widgetId,
+  widgetIds = [],
   planId,
   interval,
   paymentType,
   amount = '0.00',
   currency = 'USD',
+  targetGateway,
+  trialDays,
+  prorationBehavior,
   useNewPaymentApi = false,
   paymentMethod = 'vault',
   onBack
@@ -40,6 +48,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const [backendPaymentType, setBackendPaymentType] = useState<'subscription' | 'payment' | 'one_time'>('subscription');
   const [stripeAccount, setStripeAccount] = useState<string>();
   const [confirmedPaymentId, setConfirmedPaymentId] = useState<string>('');
+  const [resolvedWidgetId, setResolvedWidgetId] = useState<string | undefined>(widgetId);
 
   // Vault (Method 2) state
   const [vgsForm, setVgsForm] = useState<any>(null);
@@ -54,15 +63,59 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setVaultError('');
 
     try {
-      // Step 1: Call /router/init/ to determine flow
-      const initResult = await routerInit({
-        widget_id: widgetId,
-        amount,
-        currency: currency.toUpperCase(),
-        customer_email: email,
-      });
+      const candidateWidgetIds = Array.from(new Set([widgetId, ...widgetIds].filter(Boolean)));
+      let initResult: Awaited<ReturnType<typeof routerInit>> | null = null;
 
-      if (!initResult.success) {
+      // Step 1: Call /router/init/ to determine flow
+      for (const candidateWidgetId of candidateWidgetIds) {
+        try {
+          const result = await routerInit({
+            widget_id: candidateWidgetId,
+            plan_id: planId,
+            amount,
+            currency: currency.toUpperCase(),
+            customer_email: email,
+            target_gateway: targetGateway,
+            payment_type: paymentType,
+            interval,
+            trial_days: trialDays,
+            proration_behavior: prorationBehavior,
+          });
+
+          if (result.success) {
+            initResult = result;
+            setResolvedWidgetId(candidateWidgetId);
+            break;
+          }
+        } catch (error) {
+          console.warn(`Router init failed for widget ${candidateWidgetId}:`, error);
+        }
+      }
+
+      if (!initResult?.success) {
+        try {
+          const result = await routerInit({
+            plan_id: planId,
+            amount,
+            currency: currency.toUpperCase(),
+            customer_email: email,
+            target_gateway: targetGateway,
+            payment_type: paymentType,
+            interval,
+            trial_days: trialDays,
+            proration_behavior: prorationBehavior,
+          });
+
+          if (result.success) {
+            initResult = result;
+            setResolvedWidgetId(undefined);
+          }
+        } catch (error) {
+          console.warn('Router init failed without widget id:', error);
+        }
+      }
+
+      if (!initResult?.success) {
         setVaultError('Failed to initialize payment');
         setLoading(false);
         return;
@@ -263,9 +316,15 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           const result = await routerCharge({
             vault_token: token,
             vault_provider: 'vgs',
+            target_gateway: targetGateway,
             amount,
             currency: currency.toUpperCase(),
-            widget_id: widgetId,
+            widget_id: resolvedWidgetId,
+            plan_id: planId,
+            payment_type: paymentType,
+            interval,
+            trial_days: trialDays,
+            proration_behavior: prorationBehavior,
             aliased_card: aliased_card || undefined,  // Send as-is, let backend handle
           });
           
@@ -446,4 +505,3 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     </div>
   );
 };
-

@@ -323,11 +323,19 @@ function getPlanButtonDataAttrs(plan) {
     const paymentType = `${plan?.paymentType || ""}`.trim().toLowerCase();
     const interval = `${plan?.interval || ""}`.trim().toLowerCase();
     const price = `${plan?.priceAmount || plan?.price_amount || plan?.price || ""}`.trim().replace(/[^0-9.]/g, '');
+    const currency = `${plan?.currency || ""}`.trim();
+    const paymentGateway = `${plan?.payment_gateway || plan?.paymentGateway || ""}`.trim().toLowerCase();
+    const trialDays = `${plan?.trialDays || plan?.trial_days || ""}`.trim();
+    const prorationBehavior = `${plan?.proration_behavior || plan?.prorationBehavior || ""}`.trim();
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
     if (interval) attrs["data-interval"] = interval;
     if (price) attrs["data-price"] = price;
+    if (currency) attrs["data-currency"] = currency;
+    if (paymentGateway) attrs["data-payment-gateway"] = paymentGateway;
+    if (trialDays) attrs["data-trial-days"] = trialDays;
+    if (prorationBehavior) attrs["data-proration-behavior"] = prorationBehavior;
     return attrs;
 }
 
@@ -335,12 +343,20 @@ function getNodeButtonDataAttrs(node) {
     const planId = `${node?.planId || node?.id || ""}`.trim();
     const paymentType = `${node?.paymentType || ""}`.trim().toLowerCase();
     const interval = `${node?.interval || ""}`.trim().toLowerCase();
-    const price = `${node?.price || node?.amount || ""}`.trim().replace(/[^0-9.]/g, '');
+    const price = `${node?.priceAmount || node?.price_amount || node?.price || node?.amount || ""}`.trim().replace(/[^0-9.]/g, '');
+    const currency = `${node?.currency || ""}`.trim();
+    const paymentGateway = `${node?.payment_gateway || node?.paymentGateway || ""}`.trim().toLowerCase();
+    const trialDays = `${node?.trialDays || node?.trial_days || ""}`.trim();
+    const prorationBehavior = `${node?.proration_behavior || node?.prorationBehavior || ""}`.trim();
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
     if (interval) attrs["data-interval"] = interval;
     if (price) attrs["data-price"] = price;
+    if (currency) attrs["data-currency"] = currency;
+    if (paymentGateway) attrs["data-payment-gateway"] = paymentGateway;
+    if (trialDays) attrs["data-trial-days"] = trialDays;
+    if (prorationBehavior) attrs["data-proration-behavior"] = prorationBehavior;
     return attrs;
 }
 
@@ -2726,7 +2742,6 @@ function normalizeTemplateDoc(raw) {
 
 export { normalizeTemplateDoc };
 export default PricingRenderer;
-
 
 
 

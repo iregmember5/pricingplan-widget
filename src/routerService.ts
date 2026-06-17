@@ -5,7 +5,12 @@ export interface RouterChargePayload {
   amount: string;
   currency: string;
   business_email?: string;
-  widget_id: string;
+  widget_id?: string;
+  plan_id?: string;
+  payment_type?: string;
+  interval?: string;
+  trial_days?: number;
+  proration_behavior?: string;
   aliased_card?: { exp_month: string; exp_year: string; cvc: string };
 }
 

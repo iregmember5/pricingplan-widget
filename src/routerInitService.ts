@@ -1,8 +1,14 @@
 export interface RouterInitPayload {
-  widget_id: string;
+  widget_id?: string;
+  plan_id?: string;
   amount: string;
   currency: string;
   customer_email: string;
+  target_gateway?: string;
+  payment_type?: string;
+  interval?: string;
+  trial_days?: number;
+  proration_behavior?: string;
   variant_id?: string;
 }
 
