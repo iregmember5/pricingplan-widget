@@ -12,6 +12,76 @@ function normalizeAssetUrl(value) {
   return trimmed.replace(/^\"|\"$/g, "").replace(/^\'|\'$/g, "");
 }
 
+function normalizeDocAssetUrls(node) {
+  if (Array.isArray(node)) {
+    return node.map(normalizeDocAssetUrls);
+  }
+
+  if (!node || typeof node !== "object") return node;
+
+  const next = { ...node };
+  const aliasMap = {
+    bg_image: "bgImage",
+    plan_id: "planId",
+    price_amount: "priceAmount",
+    text_color: "textColor",
+    font_family: "fontFamily",
+    letter_spacing: "letterSpacing",
+    margin_bottom: "marginBottom",
+    margin_top: "marginTop",
+    max_width: "maxWidth",
+    line_height: "lineHeight",
+    border_radius: "borderRadius",
+    object_position: "objectPosition",
+    hover_bg: "hoverBg",
+    hover_color: "hoverColor",
+    full_width: "fullWidth",
+    suffix_dash: "suffixDash",
+    mobile_stack: "mobileStack",
+    min_height: "minHeight",
+    text_align: "textAlign",
+    button_text: "buttonText",
+    button_link: "buttonLink",
+    button_link_target: "buttonLinkTarget",
+    payment_type: "paymentType",
+    payment_gateway: "paymentGateway",
+    global_button_action: "globalButtonAction",
+    global_payment_type: "globalPaymentType",
+    global_currency: "globalCurrency",
+    global_billing_interval: "globalBillingInterval",
+  };
+
+  for (const [from, to] of Object.entries(aliasMap)) {
+    if (next[from] !== undefined && next[to] === undefined) {
+      next[to] = next[from];
+    }
+  }
+
+  if (typeof next.bgImage === "string") {
+    next.bgImage = normalizeAssetUrl(next.bgImage);
+  }
+  if (typeof next.src === "string") {
+    next.src = normalizeAssetUrl(next.src);
+  }
+  if (Array.isArray(next.children)) {
+    next.children = next.children.map(normalizeDocAssetUrls);
+  }
+  if (next.layout && typeof next.layout === "object") {
+    next.layout = normalizeDocAssetUrls(next.layout);
+  }
+  if (Array.isArray(next.plans)) {
+    next.plans = next.plans.map((plan) => {
+      if (!plan || typeof plan !== "object") return plan;
+      return {
+        ...plan,
+        bgImage: typeof plan.bgImage === "string" ? normalizeAssetUrl(plan.bgImage) : plan.bgImage,
+      };
+    });
+  }
+
+  return next;
+}
+
 const ANIMATION_KEYFRAMES = `
   @keyframes wings-left  { from { opacity:1; transform: perspective(800px) rotateY(90deg) scaleX(0.96); } to   { opacity:1; transform: perspective(800px) rotateY(0deg) scaleX(1); } }
   @keyframes wings-right { from { opacity:1; transform: perspective(800px) rotateY(90deg) scaleX(0.96); } to   { opacity:1; transform: perspective(800px) rotateY(0deg) scaleX(1); } }
@@ -2651,7 +2721,7 @@ function normalizeTemplateDoc(raw) {
   if (!isPlainObject(doc.theme)) doc.theme = {};
   if (!Array.isArray(doc.plans)) doc.plans = [];
   if (typeof doc.image !== "string") doc.image = "";
-  return doc;
+  return normalizeDocAssetUrls(doc);
 }
 
 export { normalizeTemplateDoc };

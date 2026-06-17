@@ -14,7 +14,23 @@ const NEW_PRICING_TYPES = new Set([
 ]);
 
 function hasRenderableNewPricingDoc(doc: any) {
-  return !!(doc && typeof doc === 'object' && (doc.layout || (Array.isArray(doc.plans) && doc.plans.length >= 0)));
+  return !!(
+    doc
+    && typeof doc === 'object'
+    && (
+      doc.layout
+      || (Array.isArray(doc.plans) && doc.plans.length > 0)
+      || (doc.theme && typeof doc.theme === 'object' && Object.keys(doc.theme).length > 0)
+    )
+  );
+}
+
+function unwrapTemplatePayload(payload: any) {
+  if (payload && typeof payload === 'object') {
+    if (payload.data && typeof payload.data === 'object') return payload.data;
+    if (payload.result && typeof payload.result === 'object') return payload.result;
+  }
+  return payload;
 }
 
 function isEmbedMode() {
@@ -278,7 +294,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
           try {
             console.log('Trying new pricing public template endpoint:', apiUrl);
             const result = await tryJsonFetch(apiUrl);
-            const normalizedDoc = normalizeTemplateDoc(result);
+            const normalizedDoc = normalizeTemplateDoc(unwrapTemplatePayload(result));
 
             if (hasRenderableNewPricingDoc(normalizedDoc)) {
               if (cancelled) return;
@@ -319,7 +335,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
                 appearance: normalizeAppearance(appearance),
               });
             } else if (NEW_PRICING_TYPES.has(widgetType) || innerData?.config_json) {
-              const normalizedDoc = normalizeTemplateDoc(innerData);
+              const normalizedDoc = normalizeTemplateDoc(unwrapTemplatePayload(innerData));
               setContent({
                 type: widgetType || 'new_pricing_widget',
                 data: normalizedDoc,
