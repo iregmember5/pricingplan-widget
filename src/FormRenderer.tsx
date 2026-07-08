@@ -93,6 +93,11 @@ const SignaturePad: React.FC<{ fieldId: string; value: string; onChange: (val: s
   );
 };
 
+const API_BASE_URLS = [
+  'https://esign-admin.signmary.com',
+  'https://mypowerly.com/v1',
+];
+
 const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -125,24 +130,30 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
     e.preventDefault();
     if (!validate()) return;
     setIsSubmitting(true);
-    try {
-      const res = await fetch(
-        `https://esign-admin.signmary.com/api/widgets/form-widgets/${config.id}/submit/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }
-      );
-      if (!res.ok) throw new Error('Submission failed');
-      setIsSubmitted(true);
-      setFormData({});
-      if (config.post_submit_action === 'REDIRECT_URL' && config.redirect_url) {
-        setTimeout(() => window.open(config.redirect_url, '_blank'), 2000);
-      } else {
-        setTimeout(() => setIsSubmitted(false), 3000);
+    let lastError: Error | null = null;
+    for (const base of API_BASE_URLS) {
+      try {
+        const res = await fetch(
+          `${base}/api/widgets/form-widgets/${config.id}/submit/`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }
+        );
+        if (!res.ok) throw new Error('Submission failed');
+        setIsSubmitted(true);
+        setFormData({});
+        if (config.post_submit_action === 'REDIRECT_URL' && config.redirect_url) {
+          setTimeout(() => window.open(config.redirect_url, '_blank'), 2000);
+        } else {
+          setTimeout(() => setIsSubmitted(false), 3000);
+        }
+        setIsSubmitting(false);
+        return;
+      } catch (err: any) {
+        console.warn(`[FormRenderer] ${base} submit failed:`, err.message);
+        lastError = err;
       }
-    } catch {
-      alert('Failed to submit. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
+    alert(lastError?.message || 'Failed to submit. Please try again.');
+    setIsSubmitting(false);
   };
 
   const inputStyle = (fieldId: string) => ({

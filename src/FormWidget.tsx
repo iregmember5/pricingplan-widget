@@ -27,20 +27,34 @@ function normalizeConfig(data: any) {
   };
 }
 
+const API_BASE_URLS = [
+  'https://esign-admin.signmary.com',
+  'https://mypowerly.com/v1',
+];
+
 const FormWidget: React.FC<FormWidgetProps> = ({ widgetId }) => {
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`https://esign-admin.signmary.com/api/widgets/form-widgets/public/${widgetId}/`)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load form');
-        return res.json();
-      })
-      .then(data => setConfig(normalizeConfig(data)))
-      .catch(err => setError(err.message || 'Failed to load form'))
-      .finally(() => setLoading(false));
+    const tryFetch = async () => {
+      let lastError: Error | null = null;
+      for (const base of API_BASE_URLS) {
+        try {
+          const res = await fetch(`${base}/api/widgets/form-widgets/public/${widgetId}/`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          setConfig(normalizeConfig(data));
+          return;
+        } catch (err: any) {
+          console.warn(`[FormWidget] ${base} failed:`, err.message);
+          lastError = err;
+        }
+      }
+      setError(lastError?.message || 'Failed to load form');
+    };
+    tryFetch().finally(() => setLoading(false));
   }, [widgetId]);
 
   if (loading) return (
