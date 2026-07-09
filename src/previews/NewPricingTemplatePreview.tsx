@@ -1731,6 +1731,290 @@ function ComparisonTableLayout({ doc }) {
 // Feed it any valid JSON doc -> it renders. No id mapping. No hardcoding.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// ---------------------------------------------------------------------------
+// SPECIAL LAYOUT — "tiered-slider"
+// One master slider swaps a single "pro" card between discrete price tiers.
+// Kept in sync with the builder engine. Config lives in doc.tieredConfig.
+// The CTA emits data-* attributes read by the embed's click delegation
+// (Widget.tsx) to start the correct plan's payment/backend flow.
+// ---------------------------------------------------------------------------
+
+const TIERED_DEFAULT_PALETTE = {
+  ink: "#1B2A3A",
+  paper: "#FAF9F5",
+  paper2: "#F1EFE6",
+  ledger: "#2F6F4E",
+  ledgerLight: "#E6F0EA",
+  gold: "#B8862E",
+  goldLight: "#F5EBD8",
+  slate: "#6B7280",
+  line: "#DAD6C9",
+  white: "#FFFFFF",
+};
+
+function useInjectGoogleFonts(families) {
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    (families || []).forEach((fam) => {
+      if (!fam) return;
+      const match = `${fam}`.match(/'([^']+)'|"([^"]+)"/);
+      const name = match?.[1] || match?.[2] || `${fam}`.split(",")[0].trim();
+      if (!name) return;
+      const systemFonts = ["Arial", "Helvetica", "Georgia", "Verdana", "Times New Roman",
+        "Courier New", "system-ui", "sans-serif", "serif", "monospace", "Trebuchet MS",
+        "Palatino", "Segoe UI", "Tahoma", "Impact"];
+      if (systemFonts.some(f => name.toLowerCase() === f.toLowerCase())) return;
+      const id = `gf-${name.replace(/\s/g, "-")}`;
+      if (document.getElementById(id)) return;
+      const link = document.createElement("link");
+      link.id = id;
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700&display=swap`;
+      document.head.appendChild(link);
+    });
+  }, [(families || []).join("|")]);
+}
+
+// Backend persists config in snake_case; the builder emits camelCase.
+// Deep-normalize keys to camelCase so the renderer reads either form.
+function tieredToCamelKey(k) {
+  return `${k}`.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+function tieredCamel(value) {
+  if (Array.isArray(value)) return value.map(tieredCamel);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[tieredToCamelKey(k)] = tieredCamel(v);
+    return out;
+  }
+  return value;
+}
+
+function getTieredConfig(doc) {
+  const rawCfg = isPlainObject(doc?.tieredConfig) ? doc.tieredConfig
+    : isPlainObject(doc?.tiered_config) ? doc.tiered_config : {};
+  const cfg = tieredCamel(rawCfg);
+  const free = isPlainObject(cfg.free) ? cfg.free : {};
+  const pro = isPlainObject(cfg.pro) ? cfg.pro : {};
+  return {
+    eyebrow: cfg.eyebrow ?? "Pricing",
+    title: cfg.title ?? "",
+    subtitle: cfg.subtitle ?? "",
+    free: {
+      name: free.name ?? "Starter",
+      tag: free.tag ?? "",
+      price: free.price ?? "0",
+      currency: free.currency ?? "$",
+      period: free.period ?? "month",
+      priceNote: free.priceNote ?? "",
+      features: Array.isArray(free.features) ? free.features : [],
+      buttonText: free.buttonText ?? "Start free",
+      planId: free.planId ?? "free",
+      buttonLink: free.buttonLink ?? "",
+      buttonLinkTarget: free.buttonLinkTarget ?? "_self",
+    },
+    pro: {
+      badge: pro.badge ?? "",
+      perClientLabel: pro.perClientLabel ?? "per client / month",
+      clientLabel: pro.clientLabel ?? "clients",
+      buttonPrefix: pro.buttonPrefix ?? "Choose ",
+      subFeatures: Array.isArray(pro.subFeatures) ? pro.subFeatures : [],
+      staticFeatures: Array.isArray(pro.staticFeatures) ? pro.staticFeatures : [],
+      tiers: Array.isArray(pro.tiers) ? pro.tiers : [],
+    },
+  };
+}
+
+function tieredPaymentAttrs(period) {
+  const p = `${period || ""}`.trim().toLowerCase().replace(/^\//, "");
+  if (/^(mo|month|monthly)$/.test(p)) return { "data-payment-type": "subscription", "data-interval": "month" };
+  if (/^(yr|year|annual|annually|yearly)$/.test(p)) return { "data-payment-type": "subscription", "data-interval": "year" };
+  return { "data-payment-type": "one_time" };
+}
+
+function renderTieredCta({ planId, price, currency, period, buttonLink, buttonLinkTarget, style, label, payable }) {
+  const link = `${buttonLink || ""}`.trim();
+  if (link) {
+    return (
+      <a
+        href={link}
+        target={buttonLinkTarget === "_blank" ? "_blank" : "_self"}
+        rel={buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
+        data-plan-id={planId || undefined}
+        style={{ ...style, textDecoration: "none", boxSizing: "border-box", display: "block" }}
+      >
+        {label}
+      </a>
+    );
+  }
+  const attrs = payable
+    ? { "data-plan-id": planId || undefined, "data-price": `${price ?? ""}`, "data-currency": currency || undefined, ...tieredPaymentAttrs(period) }
+    : {};
+  return <button type="button" style={style} {...attrs}>{label}</button>;
+}
+
+function TieredTick({ palette, variant }) {
+  const bg = variant === "gold" ? palette.goldLight : palette.ledgerLight;
+  const color = variant === "gold" ? palette.gold : palette.ledger;
+  return (
+    <span style={{ flex: "none", width: 16, height: 16, marginTop: 2, borderRadius: "50%", background: bg, color, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--tsf-mono)" }}>✓</span>
+  );
+}
+
+function TieredSliderLayout({ doc }) {
+  const cfg = getTieredConfig(doc);
+  const theme = doc?.theme || {};
+  const palette = { ...TIERED_DEFAULT_PALETTE, ...(isPlainObject(theme.palette) ? tieredCamel(theme.palette) : {}) };
+
+  const fontBody = theme.font || "'Inter', sans-serif";
+  const fontDisplay = theme.fontDisplay || theme.font_display || "'Fraunces', serif";
+  const fontMono = theme.fontMono || theme.font_mono || "'IBM Plex Mono', monospace";
+  useInjectGoogleFonts([fontBody, fontDisplay, fontMono]);
+
+  const containerRef = useRef(null);
+  const width = useContainerWidth(containerRef);
+  const stacked = width > 0 && width < 800;
+
+  const tiers = cfg.pro.tiers.length ? cfg.pro.tiers : [{}];
+  const maxIdx = tiers.length - 1;
+  const [sel, setSel] = useState(0);
+  const idx = Math.min(sel, maxIdx);
+  const tier = tiers[idx] || {};
+  const subValues = isPlainObject(tier.subValues) ? tier.subValues : {};
+  const extraFeatures = Array.isArray(tier.extraFeatures) ? tier.extraFeatures : [];
+
+  const rootVars = { "--tsf-mono": fontMono, "--tsf-display": fontDisplay };
+
+  const renderFeatList = (items, tickVariant) => (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {items.map((label, i) => (
+        <li key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 14, lineHeight: 1.5, padding: "8px 0", borderTop: i === 0 ? "none" : `1px solid ${palette.paper2}` }}>
+          <TieredTick palette={palette} variant={tickVariant} />
+          <span>{label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+
+  const ctaSolidStyle = {
+    display: "block", width: "100%", textAlign: "center", marginTop: 22,
+    background: palette.ink, color: palette.paper, border: "none",
+    borderRadius: 8, padding: 12, fontFamily: fontBody, fontSize: 14,
+    fontWeight: 500, cursor: "pointer",
+  };
+  const ctaGhostStyle = {
+    ...ctaSolidStyle, background: "transparent", color: palette.ink,
+    border: `1px solid ${palette.line}`,
+  };
+
+  const perClient = tier.perClient != null ? `${tier.perClient}` : "";
+  const priceStr = tier.price != null ? `${tier.price}` : "";
+
+  return (
+    <div ref={containerRef} style={{ ...rootVars, background: theme.bg || "transparent", color: palette.ink, fontFamily: fontBody, padding: theme.widgetPadding || "48px 24px 80px", boxSizing: "border-box" }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+        {cfg.eyebrow && (
+          <p style={{ fontFamily: fontMono, fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: palette.ledger, margin: "0 0 8px" }}>{cfg.eyebrow}</p>
+        )}
+        {cfg.title && (
+          <h1 style={{ fontFamily: fontDisplay, fontWeight: 500, fontSize: stacked ? 30 : 38, lineHeight: 1.1, margin: "0 0 10px", letterSpacing: "-0.01em" }}>{cfg.title}</h1>
+        )}
+        {cfg.subtitle && (
+          <p style={{ color: palette.slate, fontSize: 15, margin: "0 0 44px", maxWidth: 520 }}>{cfg.subtitle}</p>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: stacked ? "1fr" : "280px 1fr", gap: 24, alignItems: "start" }}>
+
+          {/* FREE CARD */}
+          <div style={{ background: palette.white, border: `1px solid ${palette.line}`, borderRadius: 14, padding: "28px 26px" }}>
+            <p style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 500, margin: "0 0 2px" }}>{cfg.free.name}</p>
+            {cfg.free.tag && <p style={{ fontSize: 13, color: palette.slate, margin: "0 0 20px" }}>{cfg.free.tag}</p>}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontFamily: fontMono, fontSize: 34, fontWeight: 500 }}>{cfg.free.currency}{cfg.free.price}</span>
+              <span style={{ color: palette.slate, fontSize: 14 }}>/{cfg.free.period}</span>
+            </div>
+            {cfg.free.priceNote && <p style={{ fontSize: 12.5, color: palette.slate, marginBottom: 22 }}>{cfg.free.priceNote}</p>}
+            {renderFeatList(cfg.free.features, "ledger")}
+            {renderTieredCta({ planId: cfg.free.planId, buttonLink: cfg.free.buttonLink, buttonLinkTarget: cfg.free.buttonLinkTarget, style: ctaGhostStyle, label: cfg.free.buttonText, payable: false })}
+          </div>
+
+          {/* PRO CARD */}
+          <div style={{ background: palette.white, border: `2px solid ${palette.ink}`, borderRadius: 14, padding: "26px 26px 28px", position: "relative" }}>
+            {cfg.pro.badge && (
+              <span style={{ position: "absolute", top: -13, left: 26, background: palette.ink, color: palette.paper, fontFamily: fontMono, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 20 }}>{cfg.pro.badge}</span>
+            )}
+            <p style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 500, margin: "0 0 2px" }}>{tier.name ?? ""}</p>
+            {tier.tag != null && <p style={{ fontSize: 13, color: palette.slate, margin: "0 0 20px" }}>{tier.tag}</p>}
+
+            {perClient !== "" && (
+              <div style={{ fontFamily: fontMono, background: palette.ledgerLight, color: palette.ledger, display: "inline-flex", alignItems: "baseline", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 13, marginBottom: 20 }}>
+                <b style={{ fontSize: 16 }}>{cfg.free.currency}{perClient}</b> {cfg.pro.perClientLabel}
+              </div>
+            )}
+
+            <div style={{ marginBottom: 26 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: fontMono, fontSize: 12.5, color: palette.slate, marginBottom: 8 }}>
+                {tiers.map((t, i) => (
+                  <span key={i} style={{ color: i === idx ? palette.ink : palette.slate, fontWeight: i === idx ? 500 : 400 }}>{cfg.free.currency}{t.price}</span>
+                ))}
+              </div>
+              <input
+                type="range" min={0} max={maxIdx} step={1} value={idx}
+                onChange={(e) => setSel(parseInt(e.target.value, 10))}
+                className="tsf-dial"
+                style={{ width: "100%" }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                {tiers.map((_, i) => <i key={i} style={{ width: 1, height: 6, background: palette.line, display: "block" }} />)}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontFamily: fontMono, fontSize: 34, fontWeight: 500 }}>{cfg.free.currency}{priceStr}</span>
+              <span style={{ color: palette.slate, fontSize: 14 }}>/{cfg.free.period} · up to {tier.clients} {cfg.pro.clientLabel}</span>
+            </div>
+
+            {cfg.pro.subFeatures.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: stacked ? "1fr" : "1fr 1fr", gap: "0 20px", marginTop: 16 }}>
+                {cfg.pro.subFeatures.map((sf) => {
+                  const sv = isPlainObject(subValues[sf.key]) ? subValues[sf.key] : {};
+                  const val = Number(sv.value ?? 0);
+                  const lastSv = isPlainObject(tiers[maxIdx]?.subValues?.[sf.key]) ? tiers[maxIdx].subValues[sf.key] : {};
+                  const max = Number(lastSv.value ?? sf.max ?? sv.max ?? val ?? 1) || 1;
+                  const pct = Math.max(0, Math.min(100, Math.round((val / max) * 100)));
+                  return (
+                    <div key={sf.key} style={{ background: palette.paper2, borderRadius: 10, padding: "10px 12px", marginBottom: 10, gridColumn: sf.full ? "1 / -1" : "auto" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12.5, color: palette.slate, marginBottom: 6 }}>
+                        <span>{sf.label}</span>
+                        <span style={{ fontFamily: fontMono, fontWeight: 500, color: palette.ink, fontSize: 13 }}>{val.toLocaleString("en-US")}</span>
+                      </div>
+                      <div style={{ position: "relative", height: 4, background: palette.line, borderRadius: 2 }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, height: 4, width: `${pct}%`, background: palette.gold, borderRadius: 2 }} />
+                        <div style={{ position: "absolute", top: "50%", left: `${pct}%`, width: 10, height: 10, borderRadius: "50%", background: palette.gold, transform: "translate(-50%,-50%)", boxShadow: `0 0 0 2px ${palette.white}` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ marginTop: 6 }}>
+              {renderFeatList([...cfg.pro.staticFeatures, ...extraFeatures], "ledger")}
+            </div>
+
+            {renderTieredCta({ planId: tier.planId ?? `tier_${idx}`, price: priceStr, currency: cfg.free.currency, period: cfg.free.period, buttonLink: tier.buttonLink, buttonLinkTarget: tier.buttonLinkTarget, style: ctaSolidStyle, label: `${cfg.pro.buttonPrefix}${cfg.free.currency}${priceStr}/${cfg.free.period}`, payable: true })}
+          </div>
+        </div>
+      </div>
+      <style>{`
+        input[type=range].tsf-dial{ -webkit-appearance:none; appearance:none; height:4px; background:${palette.line}; border-radius:2px; outline:none; }
+        input[type=range].tsf-dial::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:${palette.ink}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${palette.ink}; }
+        input[type=range].tsf-dial::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${palette.ink}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${palette.ink}; }
+      `}</style>
+    </div>
+  );
+}
+
 const LAYOUT_MAP = {
   "grid-3": GridLayout,
   "grid-4": GridLayout,
@@ -1739,6 +2023,7 @@ const LAYOUT_MAP = {
   "tall-portrait": TallPortraitLayout,
   "feature-matrix": FeatureMatrixLayout,
   "comparison-table": ComparisonTableLayout,
+  "tiered-slider": TieredSliderLayout,
 };
 
 const VALID_NODE_TYPES = new Set([
