@@ -2108,7 +2108,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const isMobile = containerWidth < 600;
     const explicitStackBreakpoint = toNumber(node.stackBreakpoint);
     const responsiveWrapBreakpoint = toNumber(node.wrapBreakpoint)
-      ?? (children.length >= 4 ? 1180 : children.length >= 3 ? 980 : undefined);
+      ?? (children.length >= 5 ? 1500 : children.length >= 4 ? 1300 : children.length >= 3 ? 980 : undefined);
     const tabletStackBreakpoint = explicitStackBreakpoint ?? (
       children.length >= 4 ? 760 : children.length >= 3 ? 700 : 760
     );
@@ -2129,8 +2129,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       (node.wrap == null && !hasExplicitHeight && children.length >= 4)
     );
     const wrapColumns = shouldWrap
-      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? 2))
+      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? (children.length >= 5 ? 4 : children.length >= 3 ? children.length : 2)))
       : 1;
+    const childFlexMinWidth = children.length >= 8 ? 160 : children.length >= 6 ? 200 : children.length >= 5 ? 220 : children.length >= 4 ? 280 : 310;
     const responsiveGap = shouldStack
       ? (resolveSpacing(node.mobileGap) ?? compactResolvedSpacing(baseGap, 0.68, 8) ?? baseGap)
       : shouldWrap
@@ -2206,7 +2207,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
           const isFluidSpacer = child?.type === "spacer" && child?.size == null;
           const shouldForceFullWidthOnWrap = shouldWrap && (child?.wrapFullWidth || child?.mobileFullWidth);
           const shouldExcludeFromWrapColumns = shouldWrap && child?.wrapExclude;
-          const childFlexStyle = shouldWrap && wrapChildBasis
+          const childFlexStyle = shouldWrap
             ? shouldForceFullWidthOnWrap
               ? { flex: "1 1 100%", minWidth: "100%", maxWidth: "100%" }
               : shouldExcludeFromWrapColumns
@@ -2217,7 +2218,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
                 }
                 : isFluidSpacer
                   ? { flex: "1 1 100%", minWidth: "100%" }
-                  : { flex: `0 0 ${wrapChildBasis}`, maxWidth: wrapChildBasis }
+                  : { flex: "1 1 0", minWidth: `${childFlexMinWidth}px` }
             : !shouldStack
               ? child?.flex != null
                 ? { flex: child.flex }
