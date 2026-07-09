@@ -2108,9 +2108,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const isMobile = containerWidth < 600;
     const explicitStackBreakpoint = toNumber(node.stackBreakpoint);
     const responsiveWrapBreakpoint = toNumber(node.wrapBreakpoint)
-      ?? (children.length >= 5 ? 1500 : children.length >= 4 ? 1300 : children.length >= 3 ? 980 : undefined);
+      ?? (children.length >= 5 ? 1500 : children.length >= 4 ? 720 : children.length >= 3 ? 600 : undefined);
     const tabletStackBreakpoint = explicitStackBreakpoint ?? (
-      children.length >= 4 ? 760 : children.length >= 3 ? 700 : 760
+      children.length >= 4 ? 600 : children.length >= 3 ? 600 : 760
     );
     const minChildWidth = toNumber(node.minChildWidth) ?? (children.length >= 4 ? 140 : 260);
     const hasExplicitHeight = !!node.height;
@@ -2125,11 +2125,10 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       && containerWidth < responsiveWrapBreakpoint;
     const shouldWrap = !shouldStack && (
       node.wrap === true ||
-      shouldResponsiveWrap ||
-      (node.wrap == null && !hasExplicitHeight && children.length >= 4)
+      shouldResponsiveWrap
     );
     const wrapColumns = shouldWrap
-      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? (children.length >= 5 ? 4 : children.length >= 3 ? children.length : 2)))
+      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? (shouldResponsiveWrap ? 2 : children.length)))
       : 1;
     const childFlexMinWidth = children.length >= 8 ? 160 : children.length >= 6 ? 200 : children.length >= 5 ? 220 : children.length >= 4 ? 280 : 310;
     const responsiveGap = shouldStack
@@ -2188,6 +2187,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
         flexWrap: shouldWrap ? "wrap" : "nowrap",
         height: adjustedResolvedHeight,
         width: px(node.width),
+        minWidth: 0,
         minHeight: resolvedMinHeight,
         overflow: node.overflow,
         borderRadius: node.borderRadius,
@@ -2237,7 +2237,6 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
   }
 
   if (type === "column") {
-    const resolvedHeight = px(node.height) || (depth === 0 ? undefined : "100%");
     const colStyle = {
       display: "flex",
       flexDirection: "column",
@@ -2261,9 +2260,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       })(),
       background: node.background,
       padding,
-      height: resolvedHeight,
       width: px(node.width),
-      minHeight: px(node.minHeight),
+      minWidth: 0,
+      minHeight: px(node.height) || px(node.minHeight),
       overflow: node.overflow,
       borderRadius: node.borderRadius,
       border: node.glowBorder ? "none" : node.border,
@@ -2580,24 +2579,26 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const muted = "rgba(0,0,0,0.45)";
 
     if (node.style === "checklist") {
+      const fSize = node.fontSize || node.font_size || 12;
+      const iconSize = Math.round(fSize * 1.15);
       return (
         <div>
           {items.map((text, idx) => {
             const isDisabled = disabled.has(text);
             return (
-              <div key={`${text}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+              <div key={`${text}-${idx}`} style={{ display: "flex", gap: Math.max(4, Math.round(fSize * 0.55)), alignItems: "flex-start", marginBottom: Math.round(fSize * 0.6) }}>
                 {isDisabled ? (
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ marginTop: 2, opacity: 0.4 }}>
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 16 16" fill="none" style={{ marginTop: 2, opacity: 0.4, flexShrink: 0 }}>
                     <circle cx="8" cy="8" r="7" stroke={accent} strokeWidth="1.5" />
                     <path d="M5 11L11 5M5 5L11 11" stroke={accent} strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
                 ) : (
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ marginTop: 2 }}>
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 16 16" fill="none" style={{ marginTop: 2, flexShrink: 0 }}>
                     <circle cx="8" cy="8" r="7" fill={accent + "25"} stroke={accent} strokeWidth="1" />
                     <path d="M4.5 8L7 10.5L11.5 5.5" stroke={accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
-                <span style={{ color: isDisabled ? muted : textColor, fontSize: 12, lineHeight: 1.5, textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
+                <span style={{ color: isDisabled ? muted : textColor, fontSize: fSize, lineHeight: 1.5, textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
               </div>
             );
           })}
@@ -2606,14 +2607,16 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     }
 
     if (node.style === "dotlist") {
+      const fSize = node.fontSize || node.font_size || 12;
+      const dotSize = Math.max(4, Math.round(fSize * 0.5));
       return (
         <div>
           {items.map((text, idx) => {
             const isDisabled = disabled.has(text);
             return (
-              <div key={`${text}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: isDisabled ? "#cbd5f5" : accent, boxShadow: isDisabled ? "none" : `0 0 8px ${accent}` }} />
-                <span style={{ color: isDisabled ? muted : textColor, fontSize: 12, textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
+              <div key={`${text}-${idx}`} style={{ display: "flex", gap: Math.max(4, Math.round(fSize * 0.55)), alignItems: "center", marginBottom: Math.round(fSize * 0.6) }}>
+                <div style={{ width: dotSize, height: dotSize, borderRadius: "50%", background: isDisabled ? "#cbd5f5" : accent, boxShadow: isDisabled ? "none" : `0 0 8px ${accent}` }} />
+                <span style={{ color: isDisabled ? muted : textColor, fontSize: fSize, textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
               </div>
             );
           })}
@@ -2632,13 +2635,14 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     }
 
     if (node.style === "minimal") {
+      const fSize = node.fontSize || node.font_size || 12;
       return (
         <div>
           {items.map((text, idx) => {
             const isDisabled = disabled.has(text);
             return (
-              <div key={`${text}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: isDisabled ? muted : textColor }}>
-                <span style={{ color: isDisabled ? "#94a3b8" : accent, fontWeight: 900, fontSize: 10 }}>{isDisabled ? "x" : ">"}</span>
+              <div key={`${text}-${idx}`} style={{ display: "flex", gap: Math.max(4, Math.round(fSize * 0.55)), alignItems: "center", padding: `${Math.round(fSize * 0.45)} 0`, borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: fSize, color: isDisabled ? muted : textColor }}>
+                <span style={{ color: isDisabled ? "#94a3b8" : accent, fontWeight: 900, fontSize: Math.max(8, Math.round(fSize * 0.75)) }}>{isDisabled ? "x" : ">"}</span>
                 <span style={{ textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
               </div>
             );
@@ -2647,10 +2651,11 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       );
     }
 
+    const fSize = node.fontSize || node.font_size || 12;
     return (
       <div>
         {items.map((text, idx) => (
-          <div key={`${text}-${idx}`} style={{ color: node.textColor || node.color || "rgba(255,255,255,0.85)", fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>{text}</div>
+          <div key={`${text}-${idx}`} style={{ color: node.textColor || node.color || "rgba(255,255,255,0.85)", fontSize: fSize, marginBottom: Math.round(fSize * 0.65), lineHeight: 1.5 }}>{text}</div>
         ))}
       </div>
     );
@@ -2734,13 +2739,16 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     if (!rawValue.trim()) return null;
     const baseSize = node.size || 16;
     let responsiveScale = 1;
-    if (containerWidth < 360) responsiveScale = 0.68;
-    else if (containerWidth < 480) responsiveScale = 0.78;
-    else if (containerWidth < 640) responsiveScale = 0.88;
+    if (baseSize >= 20) {
+      if (containerWidth < 120) responsiveScale = 0.50;
+      else if (containerWidth < 180) responsiveScale = 0.60;
+      else if (containerWidth < 260) responsiveScale = 0.72;
+      else if (containerWidth < 360) responsiveScale = 0.82;
+      else if (containerWidth < 480) responsiveScale = 0.88;
+      else if (containerWidth < 640) responsiveScale = 0.94;
+    }
 
-    const size = baseSize >= 24
-      ? Math.max(baseSize >= 40 ? 26 : 20, Math.round(baseSize * responsiveScale))
-      : baseSize;
+    const size = Math.round(baseSize * responsiveScale);
     const baseLetterSpacing = toNumber(node.letterSpacing);
     const responsiveLetterSpacing = baseLetterSpacing == null
       ? node.letterSpacing
