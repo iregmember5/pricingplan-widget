@@ -12,6 +12,7 @@
   [headers.values]
     Content-Type = "application/javascript"
 
+# SPA fallback — Netlify serves existing files first, then falls back
 [[redirects]]
   from = "/*"
   to = "/index.html"
