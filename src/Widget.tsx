@@ -164,6 +164,14 @@ function collectCheckoutPlans(doc: any) {
   if (Array.isArray(doc?.plans)) {
     doc.plans.forEach(pushPlan);
   }
+  // Tiered-slider widgets keep their plans inside tiered_config.pro.tiers
+  // (the free card is intentionally excluded — it has no paid plan).
+  const tieredConfig = doc?.tiered_config ?? doc?.tieredConfig;
+  const tieredPro = isObject(tieredConfig) ? (tieredConfig.pro ?? tieredConfig?.pro) : null;
+  const tieredTiers = isObject(tieredPro) ? (tieredPro.tiers ?? tieredPro?.tiers) : null;
+  if (Array.isArray(tieredTiers)) {
+    tieredTiers.forEach(pushPlan);
+  }
   if (Array.isArray(doc?.cards)) {
     doc.cards.forEach(pushPlan);
   }
