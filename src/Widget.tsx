@@ -122,6 +122,20 @@ function getDocPaymentGateway(doc: any) {
   return undefined;
 }
 
+// Resolve an entry's price in dollars. Zero is a real price (free plan) and
+// must survive — a plan with price 0 / price_amount 0 returns "0.00", not undefined.
+function resolveEntryPrice(entry: any): string | undefined {
+  const minor = entry?.price_amount ?? entry?.priceAmount;
+  if (minor != null && Number.isFinite(Number(minor))) {
+    return (Number(minor) / 100).toFixed(2);
+  }
+  if (entry?.price != null && `${entry.price}`.trim() !== '') {
+    const cleaned = `${entry.price}`.trim().replace(/[^0-9.]/g, '');
+    if (cleaned !== '') return cleaned;
+  }
+  return undefined;
+}
+
 function collectCheckoutPlans(doc: any) {
   const plans: CheckoutPlan[] = [];
   const seen = new Set<string>();
@@ -149,11 +163,7 @@ function collectCheckoutPlans(doc: any) {
       buttonText: `${entry.buttonText || entry.button_text || entry.text || ''}`.trim(),
       paymentType: `${entry.paymentType || entry.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
       interval: `${entry.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
-      price: entry.price_amount
-        ? (entry.price_amount / 100).toFixed(2)
-        : entry.priceAmount
-          ? (entry.priceAmount / 100).toFixed(2)
-          : `${entry.price || ''}`.trim().replace(/[^0-9.]/g, '') || undefined,
+      price: resolveEntryPrice(entry),
       currency: normalizeCurrencyCode(entry.currency, docCurrency),
       paymentGateway: normalizeGatewaySlug(entry.payment_gateway ?? entry.paymentGateway) || docPaymentGateway,
       trialDays: getTrialDays(entry),
@@ -188,6 +198,7 @@ function collectCheckoutPlans(doc: any) {
     if (node.type === 'photo-card' && (node.planId || node.id)) {
       activePlan = {
         planId: `${node.planId || node.id}`.trim(),
+        priceAmount: node.priceAmount ?? node.price_amount,
         paymentType: `${node.paymentType || node.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
         interval: `${node.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
         currency: normalizeCurrencyCode(node.currency, docCurrency),
@@ -206,6 +217,7 @@ function collectCheckoutPlans(doc: any) {
           buttonText: `${node.text || node.buttonText || ''}`.trim(),
           paymentType: `${node.paymentType || node.payment_type || activePlan?.paymentType || docPaymentType || ''}`.trim().toLowerCase() || undefined,
           interval: `${node.interval || activePlan?.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
+          price: resolveEntryPrice(node) ?? resolveEntryPrice(activePlan),
           currency: normalizeCurrencyCode(node.currency, activePlan?.currency || docCurrency),
           paymentGateway: normalizeGatewaySlug(node.payment_gateway ?? node.paymentGateway) || activePlan?.paymentGateway || docPaymentGateway,
           trialDays: getTrialDays(node) || activePlan?.trialDays,
@@ -528,9 +540,15 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     // Try to find price from nearest price-block in the DOM if not in data attribute
     const resolvePrice = (): string => {
       if (explicitPrice) return explicitPrice.replace(/[^0-9.]/g, '');
-      // walk up DOM tree to find a price-block sibling
+      // walk up DOM tree to find a price-block sibling — but stay inside THIS
+      // plan's card: once an ancestor contains other plan buttons, any price
+      // found there could belong to a sibling plan (e.g. a free card would
+      // pick up the next card's price), so stop and treat the plan as free.
       let el: HTMLElement | null = clickedButton;
       while (el) {
+        const buttonsInScope = el.querySelectorAll('button');
+        const containsOtherButtons = Array.from(buttonsInScope).some((b) => b !== clickedButton);
+        if (containsOtherButtons) break;
         // look for a data-price attribute on any ancestor or sibling
         const priceEl = el.querySelector('[data-price]');
         if (priceEl) return (priceEl.getAttribute('data-price') || '').replace(/[^0-9.]/g, '');
