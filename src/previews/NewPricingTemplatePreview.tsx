@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Bot, Brain, Building2, Camera, CheckCircle2, Dumbbell, Gauge, Globe, Layers3, LayoutGrid, Link2, MessageSquare, Monitor, RefreshCw, Rocket, Search, ShieldCheck, Sparkles, Star, Tag, Users, WandSparkles, Workflow, Zap } from "lucide-react";
 
 function normalizeAssetUrl(value) {
@@ -138,12 +138,29 @@ const ICON_COMPONENTS = {
     grid: LayoutGrid,
 };
 
-function HoverButton({ baseStyle, normalStyle, hoverStyle, text, buttonProps = {} }) {
+function HoverButton({ baseStyle, normalStyle, hoverStyle, text, buttonProps = {}, href, target }) {
   const [hovered, setHovered] = useState(false);
+  const style = { ...baseStyle, ...normalStyle, ...(hovered ? hoverStyle : {}) };
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target={target || "_self"}
+        rel={target === "_blank" ? "noopener noreferrer" : undefined}
+        style={{ ...style, textDecoration: "none", boxSizing: "border-box" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {text}
+      </a>
+    );
+  }
+
   return (
     <button
       {...buttonProps}
-      style={{ ...baseStyle, ...normalStyle, ...(hovered ? hoverStyle : {}) }}
+      style={style}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -200,7 +217,7 @@ function GlowCard({ colors, thickness = 2, speed = 3, blur = 12, borderRadius = 
 
 let _glowBtnId = 0;
 
-function GlowButton({ node, fontFamily }) {
+function GlowButton({ node, fontFamily, href, target }) {
   const idRef = useRef(`gb-${++_glowBtnId}`);
   const id = idRef.current;
   const [hovered, setHovered] = useState(false);
@@ -236,32 +253,52 @@ function GlowButton({ node, fontFamily }) {
   const sizeMap = { sm: { fontSize: 11, padding: "8px 12px" }, md: { fontSize: 12, padding: "10px 14px" }, lg: { fontSize: 14, padding: "12px 18px" } };
   const sizing = sizeMap[node.size || "md"];
 
+  const contentStyle = {
+    position: "relative", zIndex: 1,
+    width: "100%",
+    background: hovered ? (node.hoverBg || node.color || "#111") : (node.color || "#111"),
+    color: hovered ? (node.hoverColor || node.textColor || "#fff") : (node.textColor || "#fff"),
+    border: "none",
+    borderRadius: br,
+    cursor: "pointer",
+    fontFamily: node.fontFamily || fontFamily,
+    fontWeight: 700,
+    letterSpacing: node.letterSpacing,
+    textTransform: node.transform,
+    transition: "all 0.18s ease",
+    textDecoration: "none",
+    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    ...sizing,
+  };
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <div className={`${id}-wrap`}>
-        <button
-          {...getNodeButtonDataAttrs(node)}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          style={{
-            position: "relative", zIndex: 1,
-            width: "100%",
-            background: hovered ? (node.hoverBg || node.color || "#111") : (node.color || "#111"),
-            color: hovered ? (node.hoverColor || node.textColor || "#fff") : (node.textColor || "#fff"),
-            border: "none",
-            borderRadius: br,
-            cursor: "pointer",
-            fontFamily: node.fontFamily || fontFamily,
-            fontWeight: 700,
-            letterSpacing: node.letterSpacing,
-            textTransform: node.transform,
-            transition: "all 0.18s ease",
-            ...sizing,
-          }}
-        >
-          {node.text}
-        </button>
+        {href ? (
+          <a
+            href={href}
+            target={target || "_self"}
+            rel={target === "_blank" ? "noopener noreferrer" : undefined}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={contentStyle}
+          >
+            {node.text}
+          </a>
+        ) : (
+          <button
+            {...getNodeButtonDataAttrs(node)}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={contentStyle}
+          >
+            {node.text}
+          </button>
+        )}
       </div>
     </>
   );
@@ -723,12 +760,12 @@ function getCardAnim(animType, idx, total, stagger = 110) {
 
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// SECTION 1 â€” RESOLVER FUNCTIONS
+// SECTION 1 — RESOLVER FUNCTIONS
 // These are the brain. They translate theme values -> actual CSS / JSX.
 // Every layout component calls these. Nothing is hardcoded in the layouts.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// 1a. Card container CSS â€” driven by theme.cardStyle
+// 1a. Card container CSS — driven by theme.cardStyle
 function resolveCardCSS(theme, plan) {
   const isHighlighted = plan.highlighted;
   const isDark = theme.colorMode === "dark";
@@ -798,7 +835,7 @@ function resolveCardCSS(theme, plan) {
   return resolved;
 }
 
-// 1b. Accent line CSS â€” driven by theme.accentLine
+// 1b. Accent line CSS — driven by theme.accentLine
 function resolveAccentLine(theme, plan) {
   if (theme.accentLine === "none") return null;
   const style = {
@@ -809,7 +846,7 @@ function resolveAccentLine(theme, plan) {
   return style ? <div style={style} /> : null;
 }
 
-// 1c. Card header â€” driven by theme.headerLayout
+// 1c. Card header — driven by theme.headerLayout
 function resolveHeader(plan, theme) {
   const isDark = theme.colorMode === "dark" || theme.cardStyle === "image-bg" || theme.cardStyle === "full-color" || theme.cardStyle === "glass";
   const textColor = isDark ? "#fff" : "#111";
@@ -873,7 +910,7 @@ function resolveHeader(plan, theme) {
   );
 }
 
-// 1d. Price block â€” driven by theme.priceDisplay
+// 1d. Price block — driven by theme.priceDisplay
 function resolvePrice(plan, theme) {
     const onFullColor = theme.cardStyle === "full-color";
     const onDark = theme.colorMode === "dark" || theme.cardStyle === "glass" || theme.cardStyle === "image-bg" || onFullColor;
@@ -1125,9 +1162,15 @@ function renderInteractivePricing(plan, theme, actions) {
                                                     fontSize: 13,
                                                     fontWeight: 900,
                                                     cursor: "pointer",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
                                                 }}
                                             >
-                                                {control.enabled ? "✓" : "+"}
+                                                {control.enabled
+                                                    ? <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                    : <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                                                }
                                             </button>
                                         )}
                                     </div>
@@ -1202,7 +1245,10 @@ function renderInteractivePricing(plan, theme, actions) {
                                             fontWeight: 900,
                                         }}
                                     >
-                                        {control.enabled ? "✓" : "+"}
+                                        {control.enabled
+                                            ? <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                            : <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -1298,7 +1344,7 @@ function resolveButton(plan, theme) {
       letterSpacing: 1,
     };
   }
-  // elevated, flat, outlined â€” standard
+  // elevated, flat, outlined — standard
   return {
     background: plan.highlighted ? plan.color : "transparent",
     color: plan.highlighted ? "#fff" : plan.color,
@@ -1328,7 +1374,7 @@ function Stars({ rating, color }) {
 
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// SECTION 2 â€” LAYOUT COMPONENTS
+// SECTION 2 — LAYOUT COMPONENTS
 // These handle STRUCTURE only. All visual decisions go through resolvers.
 // They receive the full doc object: { layout, theme, plans, ... }
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1438,7 +1484,7 @@ function GridLayout({ doc }) {
                     }
 
                     return (
-                        <div key={plan.id} style={cardCSS}>
+                        <div key={plan.id} style={{ ...cardCSS, ...animStyle }}>
                             {cardContent}
                         </div>
                     );
@@ -1538,7 +1584,7 @@ function TallPortraitLayout({ doc }) {
                         : {};
 
                     return (
-                        <div key={plan.id} style={cardCSS}>
+                        <div key={plan.id} style={{ ...cardCSS, ...animStyle }}>
                             {theme.cardStyle === "full-color" && plan.bgGradient && (
                                 <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.25)", borderRadius: "inherit", zIndex: 0, pointerEvents: "none" }} />
                             )}
@@ -1640,13 +1686,13 @@ function FeatureMatrixLayout({ doc }) {
             <div key={fi} style={{ display: "grid", gridTemplateColumns: `200px repeat(${plans.length},1fr)`, background: fi % 2 === 0 ? "#fff" : "#fafafa", borderBottom: "1px solid #f1f5f9" }}>
               <div style={{ padding: "13px 22px", fontWeight: 600, fontSize: 13, color: "#374151", display: "flex", alignItems: "center", fontFamily: theme.font }}>{feat.label}</div>
               {plans.map(plan => {
-                const val = feat.values?.[plan.id] ?? "â€”";
+                const val = feat.values?.[plan.id] ?? "—";
                 return (
                   <div key={plan.id} style={{ padding: "13px 16px", borderLeft: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", background: plan.highlighted ? `${plan.color}04` : "transparent" }}>
-                    {val === "âœ“"
+                    {val === "✓"
                       ? <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill={plan.color + "25"} stroke={plan.color} strokeWidth="1" /><path d="M4.5 8L7 10.5L11.5 5.5" stroke={plan.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                      : val === "â€”"
-                        ? <span style={{ color: "#d1d5db", fontSize: 16 }}>â€”</span>
+                      : val === "—"
+                        ? <span style={{ color: "#d1d5db", fontSize: 16 }}>—</span>
                         : <span style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>{val}</span>
                     }
                   </div>
@@ -1708,11 +1754,11 @@ function ComparisonTableLayout({ doc }) {
               <div key={fi} style={{ display: "grid", gridTemplateColumns: `200px repeat(${plans.length},1fr)`, background: fi % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f1f5f9" }}>
                 <div style={{ padding: "11px 20px", fontSize: 13, color: "#374151", fontWeight: 500, display: "flex", alignItems: "center" }}>{feat.label}</div>
                 {plans.map(plan => {
-                  const val = feat.values?.[plan.id] ?? "â€”";
+                  const val = feat.values?.[plan.id] ?? "—";
                   return (
                     <div key={plan.id} style={{ padding: "11px 16px", borderLeft: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {val === "âœ“" ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 8L6 11.5L13.5 4" stroke={plan.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        : val === "â€”" ? <span style={{ color: "#d1d5db" }}>â€”</span>
+                      {val === "✓" ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 8L6 11.5L13.5 4" stroke={plan.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        : val === "—" ? <span style={{ color: "#d1d5db" }}>—</span>
                           : <span style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>{val}</span>}
                     </div>
                   );
@@ -1728,7 +1774,7 @@ function ComparisonTableLayout({ doc }) {
 
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// SECTION 3 â€” THE ROUTER
+// SECTION 3 — THE ROUTER
 // This is the entire engine entry point.
 // Feed it any valid JSON doc -> it renders. No id mapping. No hardcoding.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2033,6 +2079,7 @@ const VALID_NODE_TYPES = new Set([
   "comparison-grid", "absolute", "absolute-band", "overlay",
   "text", "badge", "button", "price-block", "feature-list",
   "divider", "spacer", "stars", "image", "icon", "icon-link", "crest",
+  "billing-toggle",
 ]);
 
 const NODE_TYPE_ALIASES = {
@@ -2059,7 +2106,11 @@ function normalizeNodeType(node) {
 
 function normalizeTree(node) {
   if (!node || typeof node !== "object") return node;
-  const normalized = normalizeNodeType(node);
+  const withRootType =
+    Array.isArray(node.children) && (!node.type || `${node.type}`.trim() === "")
+      ? { ...node, type: "column" }
+      : node;
+  const normalized = normalizeNodeType(withRootType);
   if (Array.isArray(normalized.children)) {
     return {
       ...normalized,
@@ -2083,10 +2134,56 @@ function validateNodeTree(node, path = "root") {
   }
 }
 
+function getModeBContentPressure(node) {
+  if (!node || typeof node !== "object") return 0;
+
+  let score = 0;
+
+  if (node.type === "feature-list") {
+    score += (Array.isArray(node.items) ? node.items.length : 0);
+    score += (Array.isArray(node.disabledItems) ? node.disabledItems.length : 0);
+  }
+  if (node.type === "button") score += 2;
+  if (node.type === "price-block") score += 1;
+  if (node.type === "text") {
+    const valueLength = typeof node.value === "string" ? node.value.length : 0;
+    if (valueLength > 120) score += 2;
+    else if (valueLength > 60) score += 1;
+  }
+  if (node.type === "image") score += 1;
+  if (node.type === "badge" || node.type === "stars") score += 1;
+
+  if (Array.isArray(node.children)) {
+    score += node.children.reduce((sum, child) => sum + getModeBContentPressure(child), 0);
+  }
+
+  return score;
+}
+
+const BillingPeriodContext = createContext({ period: "monthly", setPeriod: () => {} });
+
+function BillingPeriodProvider({ children }) {
+  const [period, setPeriod] = useState("monthly");
+  return (
+    <BillingPeriodContext.Provider value={{ period, setPeriod }}>
+      {children}
+    </BillingPeriodContext.Provider>
+  );
+}
+
+function findNode(node, predicate) {
+  if (predicate(node)) return true;
+  if (node.children && Array.isArray(node.children)) {
+    return node.children.some((child) => findNode(child, predicate));
+  }
+  return false;
+}
+
 function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
   const containerRef = useRef(null);
   const visible = useVisibleOnce(containerRef);
   const hasAnim = depth === 0 && !!theme?.animation && theme.animation !== "none";
+  const { period: billingPeriod } = useContext(BillingPeriodContext);
   if (!node || typeof node !== "object") return null;
 
   const type = node.type;
@@ -2101,6 +2198,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     <NodeRenderer key={child?.id ?? `${type}-${idx}`} node={child} theme={theme} depth={depth + 1} containerWidth={containerWidth} />
   ));
   if (type === "row") {
+    const contentPressure = children.reduce((sum, child) => sum + getModeBContentPressure(child), 0);
     const stackEnabled = node.mobileLayout === "stack" || node.mobileStack;
     const baseGap = gap !== undefined ? gap : (node.gap === undefined ? "20px" : undefined);
     const baseGapSize = spacingToNumber(baseGap);
@@ -2110,9 +2208,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const isMobile = containerWidth < 600;
     const explicitStackBreakpoint = toNumber(node.stackBreakpoint);
     const responsiveWrapBreakpoint = toNumber(node.wrapBreakpoint)
-      ?? (children.length >= 5 ? 1500 : children.length >= 4 ? 720 : children.length >= 3 ? 600 : undefined);
+      ?? (children.length >= 5 ? 1500 : children.length >= 4 ? 1300 : children.length >= 3 ? 980 : undefined);
     const tabletStackBreakpoint = explicitStackBreakpoint ?? (
-      children.length >= 4 ? 600 : children.length >= 3 ? 600 : 760
+      children.length >= 4 ? 760 : children.length >= 3 ? 700 : 760
     );
     const minChildWidth = toNumber(node.minChildWidth) ?? (children.length >= 4 ? 140 : 260);
     const hasExplicitHeight = !!node.height;
@@ -2127,12 +2225,13 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       && containerWidth < responsiveWrapBreakpoint;
     const shouldWrap = !shouldStack && (
       node.wrap === true ||
-      shouldResponsiveWrap
+      shouldResponsiveWrap ||
+      (node.wrap == null && !hasExplicitHeight && children.length >= 4)
     );
-    const wrapColumns = shouldWrap
-      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? (shouldResponsiveWrap ? 2 : children.length)))
-      : 1;
     const childFlexMinWidth = children.length >= 8 ? 160 : children.length >= 6 ? 200 : children.length >= 5 ? 220 : children.length >= 4 ? 280 : 310;
+    const wrapColumns = shouldWrap
+      ? Math.max(1, Math.min(children.length, toNumber(node.wrapColumns) ?? (children.length >= 5 ? 4 : children.length >= 3 ? children.length : 2)))
+      : 1;
     const responsiveGap = shouldStack
       ? (resolveSpacing(node.mobileGap) ?? compactResolvedSpacing(baseGap, 0.68, 8) ?? baseGap)
       : shouldWrap
@@ -2156,11 +2255,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       ?? (hasCardLikeChildren ? tallRowAutoHeightBreakpoint : defaultAutoHeightBreakpoint);
     const shouldAutoHeight = hasExplicitHeight && !shouldStack && (
       containerWidth < autoHeightBreakpoint ||
-      estimatedChildWidth < autoHeightChildWidth
+      estimatedChildWidth < autoHeightChildWidth ||
+      contentPressure >= Math.max(14, children.length * 5)
     );
-    const wrapChildBasis = shouldWrap && wrapColumns > 1
-      ? `calc((100% - ${resolvedGapSize * Math.max(0, wrapColumns - 1)}px) / ${wrapColumns})`
-      : undefined;
     const wrappedChildWidth = shouldWrap && wrapColumns > 1
       ? Math.max(0, (containerWidth - (resolvedGapSize * Math.max(0, wrapColumns - 1))) / wrapColumns)
       : estimatedChildWidth;
@@ -2189,7 +2286,6 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
         flexWrap: shouldWrap ? "wrap" : "nowrap",
         height: adjustedResolvedHeight,
         width: px(node.width),
-        minWidth: 0,
         minHeight: resolvedMinHeight,
         overflow: node.overflow,
         borderRadius: node.borderRadius,
@@ -2239,6 +2335,8 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
   }
 
   if (type === "column") {
+    const contentPressure = getModeBContentPressure(node);
+    const resolvedHeight = px(node.height) || (depth === 0 ? undefined : "100%");
     const colStyle = {
       display: "flex",
       flexDirection: "column",
@@ -2247,6 +2345,8 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       justifyContent: resolveFlexAlign(node.justify, "flex-start"),
       gap: gap !== undefined ? gap : (() => {
         if (!node.gap && Array.isArray(node.children) && node.children.length) {
+          if (contentPressure >= 10) return "4px";
+          if (contentPressure >= 7) return "6px";
           const maxSize = node.children.reduce((m, c) => {
             if (c?.type === "text") return Math.max(m, c.size || 16);
             if (c?.type === "price-block") return Math.max(m, 32);
@@ -2262,9 +2362,9 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       })(),
       background: node.background,
       padding,
+      height: resolvedHeight,
       width: px(node.width),
-      minWidth: 0,
-      minHeight: px(node.height) || px(node.minHeight),
+      minHeight: px(node.minHeight),
       overflow: node.overflow,
       borderRadius: node.borderRadius,
       border: node.glowBorder ? "none" : node.border,
@@ -2310,7 +2410,11 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const backgroundImage = node.bgGradient && bgImage
       ? `${node.bgGradient}, url(${bgImage})`
       : node.bgGradient || (bgImage ? `url(${bgImage})` : undefined);
-    const canGrowForContent = containerWidth < 360 && !!node.height;
+    const contentPressure = getModeBContentPressure(node);
+    const canGrowForContent = !!node.height && (
+      containerWidth < 360 ||
+      contentPressure >= 9
+    );
     const photoFlexStyle = node.height ? {} : flexStyle;
     return (
       <div style={{
@@ -2324,7 +2428,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
         minHeight: canGrowForContent
           ? (px(node.height) || px(node.minHeight) || (bgImage ? "200px" : undefined))
           : (px(node.minHeight) || (bgImage && !node.height ? "200px" : undefined)),
-        width: px(node.width) || "100%",
+        width: px(node.width),
         borderRadius: node.borderRadius,
         border: node.border,
         alignSelf: "stretch",
@@ -2521,10 +2625,13 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     const currency = node.currency ?? "";
     const period = node.period ?? "";
     const suffix = node.suffixDash ? ".-" : "";
+    // data-price lets the embed's checkout handler read the card's amount
+    // from the DOM without guessing from text content.
+    const dataPrice = `${amount}`.replace(/[^0-9.]/g, "");
 
     if (node.style === "hero") {
       return (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+        <div data-price={dataPrice || undefined} style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
           <span style={{ color, fontSize: 18 * size, fontWeight: 700, marginTop: 10 * size, fontFamily }}>{currency}</span>
           <span style={{ color, fontWeight: 900, fontSize: 64 * size, lineHeight: 0.95, letterSpacing: -2, fontFamily }}>{amount}{suffix}</span>
           {period && <span style={{ color, fontSize: 12 * size, opacity: 0.7, marginTop: "auto", marginBottom: 8 * size }}>/ {period}</span>}
@@ -2534,7 +2641,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
 
     if (node.style === "stacked-currency") {
       return (
-        <div data-price={`${amount}`.replace(/[^0-9.]/g, '')} style={{ lineHeight: 1, fontFamily }}>
+        <div data-price={dataPrice || undefined} style={{ lineHeight: 1, fontFamily }}>
           <div style={{ color, fontSize: 18 * size, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>{currency}</div>
           <span style={{ color, fontWeight: 900, fontSize: 54 * size, letterSpacing: -2 }}>{amount}{suffix}</span>
           {period && <div style={{ color, fontSize: 12 * size, opacity: 0.7, marginTop: 4 }}>{period}</div>}
@@ -2544,7 +2651,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
 
     if (node.style === "slash") {
       return (
-        <div>
+        <div data-price={dataPrice || undefined}>
           <span style={{ color, fontWeight: 900, fontSize: 44 * size, letterSpacing: -1, fontFamily }}>{currency}{amount}{suffix}</span>
           {period && <span style={{ color, fontSize: 12 * size, opacity: 0.65, fontFamily }}>/{period}</span>}
         </div>
@@ -2553,7 +2660,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
 
     if (node.style === "inline") {
       return (
-        <span style={{ color, fontWeight: 800, fontSize: 30 * size, fontFamily }}>
+        <span data-price={dataPrice || undefined} style={{ color, fontWeight: 800, fontSize: 30 * size, fontFamily }}>
           {currency}{amount}{suffix}
           {period && <small style={{ fontWeight: 500, fontSize: 12 * size, opacity: 0.7, marginLeft: 4 }}>/{period}</small>}
         </span>
@@ -2561,7 +2668,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     }
 
     return (
-      <div>
+      <div data-price={dataPrice || undefined}>
         <span style={{ color, fontWeight: 900, fontSize: 34 * size, letterSpacing: -1, fontFamily }}>{amount}{suffix}</span>
       </div>
     );
@@ -2643,7 +2750,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
           {items.map((text, idx) => {
             const isDisabled = disabled.has(text);
             return (
-              <div key={`${text}-${idx}`} style={{ display: "flex", gap: Math.max(4, Math.round(fSize * 0.55)), alignItems: "center", padding: `${Math.round(fSize * 0.45)} 0`, borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: fSize, color: isDisabled ? muted : textColor }}>
+              <div key={`${text}-${idx}`} style={{ display: "flex", gap: Math.max(4, Math.round(fSize * 0.55)), alignItems: "center", padding: `${Math.round(fSize * 0.45)}px 0`, borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: fSize, color: isDisabled ? muted : textColor }}>
                 <span style={{ color: isDisabled ? "#94a3b8" : accent, fontWeight: 900, fontSize: Math.max(8, Math.round(fSize * 0.75)) }}>{isDisabled ? "x" : ">"}</span>
                 <span style={{ textDecoration: isDisabled ? "line-through" : "none" }}>{text}</span>
               </div>
@@ -2664,19 +2771,42 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
   }
 
   if (type === "button") {
-    if (node.glowBorder) {
-      return <GlowButton node={node} fontFamily={fontFamily} />;
+    // Billing-toggle aware: a button can carry monthly/yearly variants that
+    // swap in based on the selected billing period (matches the builder engine).
+    const billingNode = billingPeriod === "yearly" && node.yearlyButton
+      ? { ...node, ...node.yearlyButton }
+      : billingPeriod === "monthly" && node.monthlyButton
+        ? { ...node, ...node.monthlyButton }
+        : node;
+    const effectiveInterval = billingPeriod === "yearly" && node.yearlyInterval
+      ? node.yearlyInterval
+      : billingPeriod === "monthly" && node.monthlyInterval
+        ? node.monthlyInterval
+        : billingNode.interval;
+    const effectiveText = billingPeriod === "yearly" && billingNode.yearlyButtonText
+      ? billingNode.yearlyButtonText
+      : billingPeriod === "monthly" && billingNode.monthlyButtonText
+        ? billingNode.monthlyButtonText
+        : billingNode.text;
+    const effectiveNode = { ...billingNode, interval: effectiveInterval, text: effectiveText };
+    // Custom-link buttons render as real anchors (matches the builder engine).
+    // When any link exists in the doc, Widget.tsx disables payment mode, so
+    // navigation is the intended behavior for these CTAs.
+    const nodeHref = `${effectiveNode.href ?? effectiveNode.url ?? effectiveNode.link ?? ""}`.trim() || undefined;
+    const nodeTarget = effectiveNode.target === "_blank" ? "_blank" : "_self";
+    if (effectiveNode.glowBorder) {
+      return <GlowButton node={effectiveNode} fontFamily={fontFamily} href={nodeHref} target={nodeTarget} />;
     }
-    const variant = node.variant || "solid";
-    const size = node.size || "md";
+    const variant = effectiveNode.variant || "solid";
+    const size = effectiveNode.size || "md";
     const sizeMap = {
       sm: { fontSize: 11, padding: "8px 12px" },
       md: { fontSize: 12, padding: "10px 14px" },
       lg: { fontSize: 14, padding: "12px 18px" },
     };
     const sizing = sizeMap[size] || sizeMap.md;
-    const color = node.color || "#4f46e5";
-    const textColor = node.textColor || (variant === "solid" ? "#fff" : color);
+    const color = effectiveNode.color || "#4f46e5";
+    const textColor = effectiveNode.textColor || (variant === "solid" ? "#fff" : color);
 
     const baseStyle = {
       display: "inline-flex",
@@ -2684,12 +2814,12 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
       justifyContent: "center",
       gap: 6,
       fontWeight: 700,
-      borderRadius: node.borderRadius || 6,
+      borderRadius: effectiveNode.borderRadius || 6,
       cursor: "pointer",
-      fontFamily: node.fontFamily || fontFamily,
-      letterSpacing: node.letterSpacing,
-      textTransform: node.transform,
-      width: node.fullWidth ? "100%" : "auto",
+      fontFamily: effectiveNode.fontFamily || fontFamily,
+      letterSpacing: effectiveNode.letterSpacing,
+      textTransform: effectiveNode.transform,
+      width: effectiveNode.fullWidth ? "100%" : "auto",
       transition: "all 0.18s ease",
       ...sizing,
     };
@@ -2699,20 +2829,20 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
 
     if (variant === "ghost") {
       normalStyle = { background: "transparent", color, border: "none" };
-      hoverStyle = { background: node.hoverBg || `${color}18`, color: node.hoverColor || color };
+      hoverStyle = { background: effectiveNode.hoverBg || `${color}18`, color: effectiveNode.hoverColor || color };
     } else if (variant === "ghost-border") {
-      const borderCol = node.borderColor || color;
+      const borderCol = effectiveNode.borderColor || color;
       normalStyle = { background: "transparent", color: textColor, border: `2px solid ${borderCol}` };
-      hoverStyle = { background: node.hoverBg || borderCol, color: node.hoverColor || "#fff" };
+      hoverStyle = { background: effectiveNode.hoverBg || borderCol, color: effectiveNode.hoverColor || "#fff" };
     } else if (variant === "white") {
       normalStyle = { background: "#fff", color, border: "none" };
-      hoverStyle = { background: node.hoverBg || "#f3f4f6", color: node.hoverColor || color };
+      hoverStyle = { background: effectiveNode.hoverBg || "#f3f4f6", color: effectiveNode.hoverColor || color };
     } else if (variant === "underline") {
       normalStyle = { background: "transparent", color, border: "none", borderBottom: `2px solid ${color}`, borderRadius: 0, fontStyle: "italic", padding: 0 };
-      hoverStyle = { color: node.hoverColor || color, opacity: 0.75 };
+      hoverStyle = { color: effectiveNode.hoverColor || color, opacity: 0.75 };
     } else {
       normalStyle = { background: color, color: textColor, border: "none" };
-      hoverStyle = { background: node.hoverBg || `${color}cc`, color: node.hoverColor || textColor };
+      hoverStyle = { background: effectiveNode.hoverBg || `${color}cc`, color: effectiveNode.hoverColor || textColor };
     }
 
     return (
@@ -2720,8 +2850,10 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
         baseStyle={baseStyle}
         normalStyle={normalStyle}
         hoverStyle={hoverStyle}
-        text={node.text}
-        buttonProps={getNodeButtonDataAttrs(node)}
+        text={effectiveNode.text}
+        buttonProps={getNodeButtonDataAttrs(effectiveNode)}
+        href={nodeHref}
+        target={nodeTarget}
       />
     );
   }
@@ -2737,7 +2869,12 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
   }
 
   if (type === "text") {
-    const rawValue = typeof node.value === "string" ? node.value : "";
+    const rawValue = (() => {
+      const v = typeof node.value === "string" ? node.value : "";
+      if (billingPeriod === "yearly" && node.yearlyValue != null) return `${node.yearlyValue}`;
+      if (billingPeriod === "monthly" && node.monthlyValue != null) return `${node.monthlyValue}`;
+      return v;
+    })();
     if (!rawValue.trim()) return null;
     const baseSize = node.size || 16;
     let responsiveScale = 1;
@@ -2763,6 +2900,8 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     if (size >= 36) autoMarginBottom = 14;
     else if (size >= 24) autoMarginBottom = 10;
     else if (size >= 18) autoMarginBottom = 8;
+    if (containerWidth < 420) autoMarginBottom = Math.max(4, autoMarginBottom - 4);
+    else if (containerWidth < 560) autoMarginBottom = Math.max(4, autoMarginBottom - 2);
 
     return (
       <div style={{
@@ -2794,6 +2933,44 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     );
   }
 
+  if (type === "billing-toggle") {
+    const BillingToggleInner = () => {
+      const { period, setPeriod } = useContext(BillingPeriodContext);
+      const monthlyLabel = node.monthlyLabel || "Monthly";
+      const yearlyLabel = node.yearlyLabel || "Yearly";
+      const activeColor = node.activeColor || node.color || "#4f46e5";
+      const inactiveColor = node.inactiveColor || "#9ca3af";
+      const bgColor = node.background || "#f3f4f6";
+      const toggleFontFamily = node.fontFamily || theme?.font;
+      const fontSize = node.fontSize || 14;
+      const fontWeight = node.fontWeight || 600;
+      const radius = node.borderRadius || 999;
+      const pillPadding = node.pillPadding || "4px";
+      const isMonthly = period === "monthly";
+      return (
+        <div style={{ display: "flex", justifyContent: node.align === "center" ? "center" : node.align === "right" ? "flex-end" : "flex-start", fontFamily: toggleFontFamily, transform: resolveTransform(node) }}>
+          <div style={{ display: "inline-flex", background: bgColor, borderRadius: radius, padding: pillPadding }}>
+            <button
+              type="button"
+              onClick={() => setPeriod("monthly")}
+              style={{ padding: "8px 20px", fontSize, fontWeight, border: "none", borderRadius: radius, cursor: "pointer", background: "transparent", color: isMonthly ? activeColor : inactiveColor, transition: "color 0.2s ease", fontFamily: toggleFontFamily }}
+            >
+              {monthlyLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod("yearly")}
+              style={{ padding: "8px 20px", fontSize, fontWeight, border: "none", borderRadius: radius, cursor: "pointer", background: "transparent", color: !isMonthly ? activeColor : inactiveColor, transition: "color 0.2s ease", fontFamily: toggleFontFamily }}
+            >
+              {yearlyLabel}
+            </button>
+          </div>
+        </div>
+      );
+    };
+    return <BillingToggleInner />;
+  }
+
   if (type === "divider") {
     return (
       <div style={{ height: 1, background: node.color || "rgba(0,0,0,0.1)", margin: node.margin ?? "10px 0", opacity: node.opacity ?? 1 }} />
@@ -2813,7 +2990,7 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     return (
       <div style={{ display: "flex", gap: 2 }}>
         {[1, 2, 3, 4, 5].map(i => (
-          <span key={i} style={{ color: starColor, fontSize: size, opacity: i <= rating ? 1 : 0.25 }}>â˜…</span>
+          <span key={i} style={{ color: starColor, fontSize: size, opacity: i <= rating ? 1 : 0.25 }}>★</span>
         ))}
       </div>
     );
@@ -2927,12 +3104,17 @@ function PricingRenderer({ doc }) {
   }, [safeLayout]);
   if (!normalizedDoc) return null;
   if (safeLayout) {
-    return (
+    const content = (
       <div ref={containerRef} style={{ fontFamily: normalizedDoc.theme?.font, background: normalizedDoc.theme?.bg }}>
         <AnimStyleTag />
         <NodeRenderer node={safeLayout} theme={normalizedDoc.theme} depth={0} containerWidth={width} />
       </div>
     );
+    // A stateful provider makes the billing toggle interactive on live pages.
+    if (findNode(safeLayout, (n) => n.type === "billing-toggle")) {
+      return <BillingPeriodProvider>{content}</BillingPeriodProvider>;
+    }
+    return content;
   }
   const Layout = LAYOUT_MAP[normalizedDoc.layout] || GridLayout;
   return <Layout doc={normalizedDoc} />;
