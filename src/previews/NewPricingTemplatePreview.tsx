@@ -377,6 +377,42 @@ function getPlanButtonDataAttrs(plan) {
     return attrs;
 }
 
+// Renders a Mode A plan's CTA. When plan.buttonLink is set it always wins —
+// even in payment mode — and renders a real anchor instead of a data-plan-id
+// button, so Widget.tsx's click delegation never intercepts it. This is the
+// escape hatch for free ($0) plans: redirect visitors instead of opening checkout.
+function renderPlanButton(plan, style, children) {
+  const href = typeof plan?.buttonLink === "string" ? plan.buttonLink.trim() : "";
+  const sharedStyle = {
+    ...style,
+    textDecoration: "none",
+    boxSizing: "border-box",
+    display: style?.width === "auto" ? "inline-flex" : "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+  if (href) {
+    const target = plan?.buttonLinkTarget === "_blank" ? "_blank" : "_self";
+    return (
+      <a
+        href={href}
+        target={target}
+        rel={target === "_blank" ? "noopener noreferrer" : undefined}
+        style={sharedStyle}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <button {...getPlanButtonDataAttrs(plan)} style={style}>
+      {children}
+    </button>
+  );
+}
+
 function getNodeButtonDataAttrs(node) {
     const planId = `${node?.planId || node?.id || ""}`.trim();
     const paymentType = `${node?.paymentType || ""}`.trim().toLowerCase();
@@ -1459,8 +1495,8 @@ function GridLayout({ doc }) {
 
                                 {/* Button */}
                                 {theme.buttonShape === "underline"
-                                    ? <button {...getPlanButtonDataAttrs(plan)} style={btnCSS}>{plan.buttonText} &rarr;</button>
-                                    : <button {...getPlanButtonDataAttrs(plan)} style={btnCSS}>{plan.buttonText}</button>
+                                    ? renderPlanButton(plan, btnCSS, <>{plan.buttonText} &rarr;</>)
+                                    : renderPlanButton(plan, btnCSS, plan.buttonText)
                                 }
                             </div>
                         </>
@@ -1549,7 +1585,7 @@ function HorizontalLayout({ doc }) {
                             <div style={{ marginBottom: 20 }}>
                                 {resolveFeatures(plan, theme)}
                             </div>
-                            <button {...getPlanButtonDataAttrs(plan)} style={btnCSS}>{plan.buttonText}</button>
+                            {renderPlanButton(plan, btnCSS, plan.buttonText)}
                         </div>
                     </div>
                 );
@@ -1606,7 +1642,7 @@ function TallPortraitLayout({ doc }) {
                                             })}
                                             {resolveFeatures(plan, theme)}
                                         </div>
-                                        <button {...getPlanButtonDataAttrs(plan)} style={resolveButton(plan, theme)}>{plan.buttonText}</button>
+                                        {renderPlanButton(plan, resolveButton(plan, theme), plan.buttonText)}
                                     </div>
                                 </>
                             ) : (
@@ -1633,7 +1669,7 @@ function TallPortraitLayout({ doc }) {
                                             })}
                                             {resolveFeatures(plan, theme)}
                                         </div>
-                                        <button {...getPlanButtonDataAttrs(plan)} style={btnCSS}>{plan.buttonText}</button>
+                                        {renderPlanButton(plan, btnCSS, plan.buttonText)}
                                     </div> {/* closes padding div */}
                                 </>
                             )}
@@ -1676,7 +1712,7 @@ function FeatureMatrixLayout({ doc }) {
                   <span style={{ fontWeight: 400, fontSize: 11, color: "#9ca3af" }}>/{plan.period}</span>
                 </div>
                 <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 10 }}>{plan.description}</div>
-                <button {...getPlanButtonDataAttrs(plan)} style={{ padding: "8px 18px", background: plan.highlighted ? plan.color : "transparent", color: plan.highlighted ? "#fff" : plan.color, border: `1px solid ${plan.color}`, borderRadius: parseInt(theme.borderRadius) > 8 ? 8 : 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: theme.font }}>{plan.buttonText}</button>
+                {renderPlanButton(plan, { padding: "8px 18px", background: plan.highlighted ? plan.color : "transparent", color: plan.highlighted ? "#fff" : plan.color, border: `1px solid ${plan.color}`, borderRadius: parseInt(theme.borderRadius) > 8 ? 8 : 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: theme.font }, plan.buttonText)}
               </div>
             ))}
           </div>
@@ -1735,7 +1771,7 @@ function ComparisonTableLayout({ doc }) {
                   <div style={{ height: 1, background: "#f1f5f9", margin: "16px 0" }} />
                   {resolveFeatures(plan, theme)}
                   <div style={{ marginTop: 20 }}>
-                    <button {...getPlanButtonDataAttrs(plan)} style={btnCSS}>{plan.buttonText}</button>
+                    {renderPlanButton(plan, btnCSS, plan.buttonText)}
                   </div>
                 </div>
               </div>

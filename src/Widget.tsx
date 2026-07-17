@@ -238,10 +238,28 @@ function collectCheckoutPlans(doc: any) {
   return plans;
 }
 
+// Strict: only true when a price is explicitly present AND parses to <= 0.
+// A missing/blank price means "not a priced entry" (e.g. a plain link
+// button), not "free" — that distinction matters below, where treating every
+// unpriced link as "free" would wrongly disable payment mode entirely for
+// widgets that legitimately don't set a price anywhere.
+function isExplicitFreePrice(price: any) {
+  if (price == null || `${price}`.trim() === '') return false;
+  const parsed = Number.parseFloat(`${price}`.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) && parsed <= 0;
+}
+
 function hasCustomLinksInDoc(doc: any) {
   const hasLinkOnEntry = (entry: any) => {
     if (!isObject(entry)) return false;
-    return ['buttonLink', 'href', 'url', 'link'].some((key) => `${entry?.[key] || ''}`.trim().length > 0);
+    const hasLink = ['buttonLink', 'href', 'url', 'link'].some((key) => `${entry?.[key] || ''}`.trim().length > 0);
+    if (!hasLink) return false;
+    // A link on an explicitly free ($0) plan/button is just the redirect-
+    // instead-of-$0-checkout escape hatch — it must not disable payment mode
+    // for the rest of the (paid) plans/buttons in the same widget.
+    const priceSource = entry?.price ?? entry?.priceAmount ?? entry?.price_amount;
+    if (isExplicitFreePrice(priceSource)) return false;
+    return true;
   };
 
   if (Array.isArray(doc?.plans) && doc.plans.some(hasLinkOnEntry)) return true;
