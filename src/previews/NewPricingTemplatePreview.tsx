@@ -1937,11 +1937,11 @@ function renderTieredCta({ planId, price, currency, period, buttonLink, buttonLi
   return <button type="button" style={style} {...attrs}>{label}</button>;
 }
 
-function TieredTick({ palette, variant }) {
-  const bg = variant === "gold" ? palette.goldLight : palette.ledgerLight;
-  const color = variant === "gold" ? palette.gold : palette.ledger;
+function TieredTick({ palette, variant, accentColor }) {
+  const bg = accentColor ? `${accentColor}18` : (variant === "gold" ? palette.goldLight : palette.ledgerLight);
+  const color = accentColor || (variant === "gold" ? palette.gold : palette.ledger);
   return (
-    <span style={{ flex: "none", width: 16, height: 16, marginTop: 2, borderRadius: "50%", background: bg, color, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--tsf-mono)" }}>✓</span>
+    <span style={{ flex: "none", width: 16, height: 16, marginTop: 2, borderRadius: "50%", background: bg, color, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--tsf-mono)", transition: "background 0.3s ease, color 0.3s ease" }}>✓</span>
   );
 }
 
@@ -1967,13 +1967,16 @@ function TieredSliderLayout({ doc }) {
   const subValues = isPlainObject(tier.subValues) ? tier.subValues : {};
   const extraFeatures = Array.isArray(tier.extraFeatures) ? tier.extraFeatures : [];
 
+  const TIER_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#14b8a6", "#ef4444"];
+  const tierColor = TIER_COLORS[idx] || TIER_COLORS[0];
+
   const rootVars = { "--tsf-mono": fontMono, "--tsf-display": fontDisplay };
 
-  const renderFeatList = (items, tickVariant) => (
+  const renderFeatList = (items, tickVariant, accentColor) => (
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {items.map((label, i) => (
         <li key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 14, lineHeight: 1.5, padding: "8px 0", borderTop: i === 0 ? "none" : `1px solid ${palette.paper2}` }}>
-          <TieredTick palette={palette} variant={tickVariant} />
+          <TieredTick palette={palette} variant={tickVariant} accentColor={accentColor} />
           <span>{label}</span>
         </li>
       ))}
@@ -2001,7 +2004,7 @@ function TieredSliderLayout({ doc }) {
           <p style={{ fontFamily: fontMono, fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: palette.ledger, margin: "0 0 8px" }}>{cfg.eyebrow}</p>
         )}
         {cfg.title && (
-          <h1 style={{ fontFamily: fontDisplay, fontWeight: 500, fontSize: stacked ? 30 : 38, lineHeight: 1.1, margin: "0 0 10px", letterSpacing: "-0.01em" }}>{cfg.title}</h1>
+          <h1 style={{ fontFamily: fontDisplay, fontWeight: 700, fontSize: stacked ? 30 : 38, lineHeight: 1.1, margin: "0 0 10px", letterSpacing: "-0.01em" }}>{cfg.title}</h1>
         )}
         {cfg.subtitle && (
           <p style={{ color: palette.slate, fontSize: 15, margin: "0 0 44px", maxWidth: 520 }}>{cfg.subtitle}</p>
@@ -2011,36 +2014,48 @@ function TieredSliderLayout({ doc }) {
 
           {/* FREE CARD */}
           <div style={{ background: palette.white, border: `1px solid ${palette.line}`, borderRadius: 14, padding: "28px 26px" }}>
-            <p style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 500, margin: "0 0 2px" }}>{cfg.free.name}</p>
+            <p style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 500, margin: "0 0 2px", color: palette.ledger }}>{cfg.free.name}</p>
             {cfg.free.tag && <p style={{ fontSize: 13, color: palette.slate, margin: "0 0 20px" }}>{cfg.free.tag}</p>}
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-              <span style={{ fontFamily: fontMono, fontSize: 34, fontWeight: 500 }}>{cfg.free.currency}{cfg.free.price}</span>
-              <span style={{ color: palette.slate, fontSize: 14 }}>/{cfg.free.period}</span>
-            </div>
+            {String(cfg.free.price) === "0" || String(cfg.free.price) === "0.00" ? (
+              <div style={{ marginBottom: 4 }}>
+                <span style={{ fontFamily: fontDisplay, fontSize: 56, fontWeight: 800, color: palette.ledger, lineHeight: 1, letterSpacing: "-0.02em" }}>FREE</span>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontFamily: fontMono, fontSize: 34, fontWeight: 500 }}>{cfg.free.currency}{cfg.free.price}</span>
+                <span style={{ color: palette.slate, fontSize: 14 }}>/{cfg.free.period}</span>
+              </div>
+            )}
             {cfg.free.priceNote && <p style={{ fontSize: 12.5, color: palette.slate, marginBottom: 22 }}>{cfg.free.priceNote}</p>}
             {renderFeatList(cfg.free.features, "ledger")}
-            {renderTieredCta({ planId: cfg.free.planId, buttonLink: cfg.free.buttonLink, buttonLinkTarget: cfg.free.buttonLinkTarget, style: ctaGhostStyle, label: cfg.free.buttonText, payable: false })}
+            {renderTieredCta({ planId: cfg.free.planId, buttonLink: cfg.free.buttonLink, buttonLinkTarget: cfg.free.buttonLinkTarget, style: { ...ctaSolidStyle, background: palette.ledger, color: palette.white }, label: cfg.free.buttonText, payable: false })}
           </div>
 
           {/* PRO CARD */}
-          <div style={{ background: palette.white, border: `2px solid ${palette.ink}`, borderRadius: 14, padding: "26px 26px 28px", position: "relative" }}>
+          <div style={{ background: palette.white, border: `2px solid ${tierColor}`, borderRadius: 14, padding: "26px 26px 28px", position: "relative", transition: "border-color 0.3s ease" }}>
             {cfg.pro.badge && (
-              <span style={{ position: "absolute", top: -13, left: 26, background: palette.ink, color: palette.paper, fontFamily: fontMono, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 20 }}>{cfg.pro.badge}</span>
+              <span style={{ position: "absolute", top: -13, left: 26, background: tierColor, color: palette.paper, fontFamily: fontMono, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 20, transition: "background 0.3s ease" }}>{cfg.pro.badge}</span>
             )}
-            <p style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 500, margin: "0 0 2px" }}>{tier.name ?? ""}</p>
+            {tier.name && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 4px" }}>
+                <p style={{ fontFamily: fontDisplay, fontSize: 48, fontWeight: 800, margin: 0, color: tierColor, lineHeight: 1, letterSpacing: "-0.02em", transition: "color 0.3s ease" }}>{tier.name}</p>
+                <span style={{ background: tierColor, color: "#fff", fontFamily: fontBody, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap", alignSelf: "flex-start", marginTop: 6, transition: "background 0.3s ease" }}>Popular</span>
+              </div>
+            )}
             {tier.tag != null && <p style={{ fontSize: 13, color: palette.slate, margin: "0 0 20px" }}>{tier.tag}</p>}
 
             {perClient !== "" && (
-              <div style={{ fontFamily: fontMono, background: palette.ledgerLight, color: palette.ledger, display: "inline-flex", alignItems: "baseline", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 13, marginBottom: 20 }}>
-                <b style={{ fontSize: 16 }}>{cfg.free.currency}{perClient}</b> {cfg.pro.perClientLabel}
+              <div style={{ fontFamily: fontMono, background: `${tierColor}18`, color: tierColor, display: "inline-flex", alignItems: "baseline", gap: 6, padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, marginBottom: 20, transition: "background 0.3s ease, color 0.3s ease" }}>
+                <b style={{ fontSize: 18 }}>{cfg.free.currency}{perClient}</b> {cfg.pro.perClientLabel}
               </div>
             )}
 
             <div style={{ marginBottom: 26 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontFamily: fontMono, fontSize: 12.5, color: palette.slate, marginBottom: 8 }}>
-                {tiers.map((t, i) => (
-                  <span key={i} style={{ color: i === idx ? palette.ink : palette.slate, fontWeight: i === idx ? 500 : 400 }}>{cfg.free.currency}{t.price}</span>
-                ))}
+                {tiers.map((t, i) => {
+                  const tc = TIER_COLORS[i] || TIER_COLORS[0];
+                  return <span key={i} style={{ color: i === idx ? tc : palette.slate, fontWeight: i === idx ? 600 : 400, transition: "color 0.3s ease" }}>{cfg.free.currency}{t.price}</span>;
+                })}
               </div>
               <input
                 type="range" min={0} max={maxIdx} step={1} value={idx}
@@ -2054,7 +2069,7 @@ function TieredSliderLayout({ doc }) {
             </div>
 
             <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-              <span style={{ fontFamily: fontMono, fontSize: 34, fontWeight: 500 }}>{cfg.free.currency}{priceStr}</span>
+              <span style={{ fontFamily: fontMono, fontSize: 42, fontWeight: 800, color: tierColor, transition: "color 0.3s ease" }}>{cfg.free.currency}{priceStr}</span>
               <span style={{ color: palette.slate, fontSize: 14 }}>/{cfg.free.period} · up to {tier.clients} {cfg.pro.clientLabel}</span>
             </div>
 
@@ -2070,11 +2085,11 @@ function TieredSliderLayout({ doc }) {
                     <div key={sf.key} style={{ background: palette.paper2, borderRadius: 10, padding: "10px 12px", marginBottom: 10, gridColumn: sf.full ? "1 / -1" : "auto" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12.5, color: palette.slate, marginBottom: 6 }}>
                         <span>{sf.label}</span>
-                        <span style={{ fontFamily: fontMono, fontWeight: 500, color: palette.ink, fontSize: 13 }}>{val.toLocaleString("en-US")}</span>
+                        <span style={{ fontFamily: fontMono, fontWeight: 500, color: tierColor, fontSize: 13, transition: "color 0.3s ease" }}>{val.toLocaleString("en-US")}</span>
                       </div>
                       <div style={{ position: "relative", height: 4, background: palette.line, borderRadius: 2 }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, height: 4, width: `${pct}%`, background: palette.gold, borderRadius: 2 }} />
-                        <div style={{ position: "absolute", top: "50%", left: `${pct}%`, width: 10, height: 10, borderRadius: "50%", background: palette.gold, transform: "translate(-50%,-50%)", boxShadow: `0 0 0 2px ${palette.white}` }} />
+                        <div style={{ position: "absolute", top: 0, left: 0, height: 4, width: `${pct}%`, background: tierColor, borderRadius: 2, transition: "background 0.3s ease" }} />
+                        <div style={{ position: "absolute", top: "50%", left: `${pct}%`, width: 10, height: 10, borderRadius: "50%", background: tierColor, transform: "translate(-50%,-50%)", boxShadow: `0 0 0 2px ${palette.white}`, transition: "background 0.3s ease" }} />
                       </div>
                     </div>
                   );
@@ -2083,17 +2098,17 @@ function TieredSliderLayout({ doc }) {
             )}
 
             <div style={{ marginTop: 6 }}>
-              {renderFeatList([...cfg.pro.staticFeatures, ...extraFeatures], "ledger")}
+              {renderFeatList([...cfg.pro.staticFeatures, ...extraFeatures], "ledger", tierColor)}
             </div>
 
-            {renderTieredCta({ planId: tier.planId ?? `tier_${idx}`, price: priceStr, currency: cfg.free.currency, period: cfg.free.period, buttonLink: tier.buttonLink, buttonLinkTarget: tier.buttonLinkTarget, style: ctaSolidStyle, label: `${cfg.pro.buttonPrefix}${cfg.free.currency}${priceStr}/${cfg.free.period}`, payable: true })}
+            {renderTieredCta({ planId: tier.planId ?? `tier_${idx}`, price: priceStr, currency: cfg.free.currency, period: cfg.free.period, buttonLink: tier.buttonLink, buttonLinkTarget: tier.buttonLinkTarget, style: { ...ctaSolidStyle, background: tierColor, color: palette.white, transition: "background 0.3s ease" }, label: `${cfg.pro.buttonPrefix}${cfg.free.currency}${priceStr}/${cfg.free.period}`, payable: true })}
           </div>
         </div>
       </div>
       <style>{`
         input[type=range].tsf-dial{ -webkit-appearance:none; appearance:none; height:4px; background:${palette.line}; border-radius:2px; outline:none; }
-        input[type=range].tsf-dial::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:${palette.ink}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${palette.ink}; }
-        input[type=range].tsf-dial::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${palette.ink}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${palette.ink}; }
+        input[type=range].tsf-dial::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:${tierColor}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${tierColor}; transition: background 0.3s ease, box-shadow 0.3s ease; }
+        input[type=range].tsf-dial::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${tierColor}; cursor:pointer; border:3px solid ${palette.paper}; box-shadow:0 0 0 1px ${tierColor}; transition: background 0.3s ease, box-shadow 0.3s ease; }
       `}</style>
     </div>
   );
