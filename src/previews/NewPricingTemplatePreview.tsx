@@ -63,20 +63,49 @@ function normalizeDocAssetUrls(node) {
   if (typeof next.src === "string") {
     next.src = normalizeAssetUrl(next.src);
   }
+  const globalAction = `${next.globalButtonAction || ""}`.trim().toLowerCase();
+
+  const applyGlobalActionToNode = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "button" && !`${node.action || ""}`.trim() && (globalAction === "payment_link" || globalAction === "manual_invoice")) {
+      node.action = globalAction;
+    }
+    if (Array.isArray(node.children)) node.children.forEach(applyGlobalActionToNode);
+  };
+
   if (Array.isArray(next.children)) {
     next.children = next.children.map(normalizeDocAssetUrls);
+    next.children.forEach(applyGlobalActionToNode);
   }
   if (next.layout && typeof next.layout === "object") {
     next.layout = normalizeDocAssetUrls(next.layout);
+    applyGlobalActionToNode(next.layout);
   }
   if (Array.isArray(next.plans)) {
     next.plans = next.plans.map((plan) => {
       if (!plan || typeof plan !== "object") return plan;
+      const inherited = !`${plan.action || ""}`.trim() && (globalAction === "payment_link" || globalAction === "manual_invoice")
+        ? globalAction
+        : undefined;
       return {
         ...plan,
+        action: inherited || plan.action,
+        paymentLink: plan.paymentLink ?? plan.payment_link,
         bgImage: typeof plan.bgImage === "string" ? normalizeAssetUrl(plan.bgImage) : plan.bgImage,
       };
     });
+  }
+
+  const tieredConfig = next.tieredConfig ?? next.tiered_config;
+  if (tieredConfig && typeof tieredConfig === "object") {
+    const inheritTiered = (item) => {
+      if (!item || typeof item !== "object") return;
+      if (!`${item.action || ""}`.trim() && (globalAction === "payment_link" || globalAction === "manual_invoice")) {
+        item.action = globalAction;
+      }
+    };
+    inheritTiered(tieredConfig.free);
+    if (Array.isArray(tieredConfig.pro?.tiers)) tieredConfig.pro.tiers.forEach(inheritTiered);
   }
 
   return next;
@@ -365,6 +394,8 @@ function getPlanButtonDataAttrs(plan) {
     const paymentGateway = `${plan?.payment_gateway || plan?.paymentGateway || ""}`.trim().toLowerCase();
     const trialDays = `${plan?.trialDays || plan?.trial_days || ""}`.trim();
     const prorationBehavior = `${plan?.proration_behavior || plan?.prorationBehavior || ""}`.trim();
+    const action = `${plan?.action || ""}`.trim().toLowerCase();
+    const paymentLink = `${plan?.paymentLink || plan?.payment_link || ""}`.trim();
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
@@ -374,6 +405,8 @@ function getPlanButtonDataAttrs(plan) {
     if (paymentGateway) attrs["data-payment-gateway"] = paymentGateway;
     if (trialDays) attrs["data-trial-days"] = trialDays;
     if (prorationBehavior) attrs["data-proration-behavior"] = prorationBehavior;
+    if (action) attrs["data-action"] = action;
+    if (paymentLink) attrs["data-payment-link"] = paymentLink;
     return attrs;
 }
 
@@ -382,7 +415,10 @@ function getPlanButtonDataAttrs(plan) {
 // button, so Widget.tsx's click delegation never intercepts it. This is the
 // escape hatch for free ($0) plans: redirect visitors instead of opening checkout.
 function renderPlanButton(plan, style, children) {
-  const href = typeof plan?.buttonLink === "string" ? plan.buttonLink.trim() : "";
+  const action = `${plan?.action || ""}`.trim().toLowerCase();
+  const href = action === "payment_link"
+    ? `${plan?.paymentLink || plan?.payment_link || ""}`.trim()
+    : `${plan?.buttonLink || ""}`.trim();
   const sharedStyle = {
     ...style,
     textDecoration: "none",
@@ -393,7 +429,7 @@ function renderPlanButton(plan, style, children) {
   };
 
   if (href) {
-    const target = plan?.buttonLinkTarget === "_blank" ? "_blank" : "_self";
+    const target = action === "payment_link" ? "_blank" : (plan?.buttonLinkTarget === "_blank" ? "_blank" : "_self");
     return (
       <a
         href={href}
@@ -423,6 +459,8 @@ function getNodeButtonDataAttrs(node) {
     const paymentGateway = `${node?.payment_gateway || node?.paymentGateway || ""}`.trim().toLowerCase();
     const trialDays = `${node?.trialDays || node?.trial_days || ""}`.trim();
     const prorationBehavior = `${node?.proration_behavior || node?.prorationBehavior || ""}`.trim();
+    const action = `${node?.action || ""}`.trim().toLowerCase();
+    const paymentLink = `${node?.paymentLink || node?.payment_link || ""}`.trim();
     const attrs = {};
     if (planId) attrs["data-plan-id"] = planId;
     if (paymentType) attrs["data-payment-type"] = paymentType;
@@ -432,6 +470,8 @@ function getNodeButtonDataAttrs(node) {
     if (paymentGateway) attrs["data-payment-gateway"] = paymentGateway;
     if (trialDays) attrs["data-trial-days"] = trialDays;
     if (prorationBehavior) attrs["data-proration-behavior"] = prorationBehavior;
+    if (action) attrs["data-action"] = action;
+    if (paymentLink) attrs["data-payment-link"] = paymentLink;
     return attrs;
 }
 
@@ -1916,15 +1956,20 @@ function tieredPaymentAttrs(period) {
   return { "data-payment-type": "one_time" };
 }
 
-function renderTieredCta({ planId, price, currency, period, buttonLink, buttonLinkTarget, style, label, payable }) {
-  const link = `${buttonLink || ""}`.trim();
+function renderTieredCta({ planId, price, currency, period, buttonLink, buttonLinkTarget, style, label, payable, action, paymentLink }) {
+  const resolvedAction = `${action || ""}`.trim().toLowerCase();
+  const link = resolvedAction === "payment_link"
+    ? `${paymentLink || ""}`.trim()
+    : `${buttonLink || ""}`.trim();
   if (link) {
     return (
       <a
         href={link}
-        target={buttonLinkTarget === "_blank" ? "_blank" : "_self"}
-        rel={buttonLinkTarget === "_blank" ? "noopener noreferrer" : undefined}
+        target={resolvedAction === "payment_link" || buttonLinkTarget === "_blank" ? "_blank" : "_self"}
+        rel={(resolvedAction === "payment_link" || buttonLinkTarget === "_blank") ? "noopener noreferrer" : undefined}
         data-plan-id={planId || undefined}
+        data-action={resolvedAction || undefined}
+        data-payment-link={resolvedAction === "payment_link" ? link : undefined}
         style={{ ...style, textDecoration: "none", boxSizing: "border-box", display: "block" }}
       >
         {label}
@@ -1932,8 +1977,16 @@ function renderTieredCta({ planId, price, currency, period, buttonLink, buttonLi
     );
   }
   const attrs = payable
-    ? { "data-plan-id": planId || undefined, "data-price": `${price ?? ""}`, "data-currency": currency || undefined, ...tieredPaymentAttrs(period) }
-    : {};
+    ? {
+        "data-plan-id": planId || undefined,
+        "data-price": `${price ?? ""}`,
+        "data-currency": currency || undefined,
+        "data-action": resolvedAction || undefined,
+        ...tieredPaymentAttrs(period),
+      }
+    : resolvedAction
+      ? { "data-plan-id": planId || undefined, "data-action": resolvedAction }
+      : {};
   return <button type="button" style={style} {...attrs}>{label}</button>;
 }
 
@@ -2028,7 +2081,7 @@ function TieredSliderLayout({ doc }) {
             )}
             {cfg.free.priceNote && <p style={{ fontSize: 12.5, color: palette.slate, marginBottom: 22 }}>{cfg.free.priceNote}</p>}
             {renderFeatList(cfg.free.features, "ledger")}
-            {renderTieredCta({ planId: cfg.free.planId, buttonLink: cfg.free.buttonLink, buttonLinkTarget: cfg.free.buttonLinkTarget, style: { ...ctaSolidStyle, background: palette.ledger, color: palette.white }, label: cfg.free.buttonText, payable: false })}
+            {renderTieredCta({ planId: cfg.free.planId, buttonLink: cfg.free.buttonLink, buttonLinkTarget: cfg.free.buttonLinkTarget, style: { ...ctaSolidStyle, background: palette.ledger, color: palette.white }, label: cfg.free.buttonText, payable: false, action: cfg.free.action, paymentLink: cfg.free.paymentLink })}
           </div>
 
           {/* PRO CARD */}
@@ -2101,7 +2154,7 @@ function TieredSliderLayout({ doc }) {
               {renderFeatList([...cfg.pro.staticFeatures, ...extraFeatures], "ledger", tierColor)}
             </div>
 
-            {renderTieredCta({ planId: tier.planId ?? `tier_${idx}`, price: priceStr, currency: cfg.free.currency, period: cfg.free.period, buttonLink: tier.buttonLink, buttonLinkTarget: tier.buttonLinkTarget, style: { ...ctaSolidStyle, background: tierColor, color: palette.white, transition: "background 0.3s ease" }, label: `${cfg.pro.buttonPrefix}${cfg.free.currency}${priceStr}/${cfg.free.period}`, payable: true })}
+            {renderTieredCta({ planId: tier.planId ?? `tier_${idx}`, price: priceStr, currency: cfg.free.currency, period: cfg.free.period, buttonLink: tier.buttonLink, buttonLinkTarget: tier.buttonLinkTarget, style: { ...ctaSolidStyle, background: tierColor, color: palette.white, transition: "background 0.3s ease" }, label: `${cfg.pro.buttonPrefix}${cfg.free.currency}${priceStr}/${cfg.free.period}`, payable: true, action: tier.action, paymentLink: tier.paymentLink })}
           </div>
         </div>
       </div>
@@ -2843,8 +2896,11 @@ function NodeRenderer({ node, theme, depth = 0, containerWidth = 800 }) {
     // Custom-link buttons render as real anchors (matches the builder engine).
     // When any link exists in the doc, Widget.tsx disables payment mode, so
     // navigation is the intended behavior for these CTAs.
-    const nodeHref = `${effectiveNode.href ?? effectiveNode.url ?? effectiveNode.link ?? ""}`.trim() || undefined;
-    const nodeTarget = effectiveNode.target === "_blank" ? "_blank" : "_self";
+    const nodeAction = `${effectiveNode.action || ""}`.trim().toLowerCase();
+    const nodeHref = `${nodeAction === "payment_link"
+      ? (effectiveNode.paymentLink ?? effectiveNode.payment_link ?? "")
+      : (effectiveNode.href ?? effectiveNode.url ?? effectiveNode.link ?? "")}`.trim() || undefined;
+    const nodeTarget = nodeAction === "payment_link" || effectiveNode.target === "_blank" ? "_blank" : "_self";
     if (effectiveNode.glowBorder) {
       return <GlowButton node={effectiveNode} fontFamily={fontFamily} href={nodeHref} target={nodeTarget} />;
     }
