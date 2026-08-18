@@ -3,6 +3,7 @@ import { ComparisonTablePreview } from './previews/ComparisonTablePreview';
 import { PricingCardPreview } from './previews/PricingCardPreview';
 import NewPricingTemplatePreview, { normalizeTemplateDoc } from './previews/NewPricingTemplatePreview';
 import { PaymentFlow } from './PaymentFlow';
+import { ManualInvoiceFlow } from './ManualInvoiceFlow';
 import { MOCK_NEW_PRICING_WIDGET } from './mockNewPricingWidget';
 
 const MOCK_NEW_PRICING_ID = 'mock-new-pricing';
@@ -282,6 +283,8 @@ function shouldUseNewWidgetPayment(doc: any, plans: Array<{ planId: string }>) {
   const paymentType = `${doc?.payment_type || doc?.paymentType || ''}`.trim().toLowerCase();
 
   if (buttonAction === 'link') return false;
+  if (buttonAction === 'payment_link') return false;
+  if (buttonAction === 'manual_invoice') return false;
   if (buttonAction === 'payment') return true;
   
   // If payment_type is set (one_time or subscription), enable payment
@@ -367,6 +370,8 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [routerWidgetIds, setRouterWidgetIds] = useState<string[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<CheckoutPlan | null>(null);
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
+  const [showManualInvoice, setShowManualInvoice] = useState(false);
+  const [invoicePlan, setInvoicePlan] = useState<{ planId: string; planName: string; price?: string; currency?: string } | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentTransactionId, setPaymentTransactionId] = useState<string>('');
   const newPreviewRootRef = useRef<HTMLDivElement | null>(null);
@@ -537,13 +542,44 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   useEffect(() => {
     setSelectedPlan(null);
     setShowPaymentFlow(false);
+    setShowManualInvoice(false);
+    setInvoicePlan(null);
   }, [widgetId]);
 
   const handleNewWidgetButtonCapture: React.MouseEventHandler<HTMLDivElement> = (event) => {
-    if (!newWidgetPaymentEnabled || showPaymentFlow) return;
     const target = event.target as HTMLElement | null;
     const clickedButton = target?.closest('button');
     if (!clickedButton) return;
+
+    // ── Action routing (works regardless of payment mode) ───────────────────
+    const action = `${clickedButton.getAttribute('data-action') || ''}`.trim().toLowerCase();
+
+    if (action === 'payment_link') {
+      event.preventDefault();
+      event.stopPropagation();
+      const paymentLink = `${clickedButton.getAttribute('data-payment-link') || ''}`.trim();
+      if (paymentLink) {
+        window.open(paymentLink, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    if (action === 'manual_invoice') {
+      event.preventDefault();
+      event.stopPropagation();
+      const planId = `${clickedButton.getAttribute('data-plan-id') || ''}`.trim();
+      const matchedPlan = planId ? newWidgetPlans.find(p => p.planId === planId) : undefined;
+      setInvoicePlan({
+        planId: planId || matchedPlan?.planId || 'default',
+        planName: matchedPlan?.buttonText || `${clickedButton.textContent || ''}`.trim(),
+        price: matchedPlan?.price || `${clickedButton.getAttribute('data-price') || ''}`.trim().replace(/[^0-9.]/g, ''),
+        currency: matchedPlan?.currency || normalizeCurrencyCode(clickedButton.getAttribute('data-currency') || content.data?.currency || content.data?.globalCurrency),
+      });
+      setShowManualInvoice(true);
+      return;
+    }
+
+    if (!newWidgetPaymentEnabled || showPaymentFlow) return;
 
     const explicitPlanId = `${clickedButton.getAttribute('data-plan-id') || ''}`.trim();
     const explicitPaymentType = `${clickedButton.getAttribute('data-payment-type') || ''}`.trim().toLowerCase();
@@ -689,6 +725,31 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
           Back to Plans
         </button>
       </div>
+    );
+  }
+
+  if (
+    NEW_PRICING_TYPES.has(content.type)
+    && showManualInvoice
+    && invoicePlan
+  ) {
+    return (
+      <ManualInvoiceFlow
+        widgetId={actualWidgetId}
+        widgetIds={routerWidgetIds}
+        planId={invoicePlan.planId}
+        planName={invoicePlan.planName}
+        amount={invoicePlan.price || '0.00'}
+        currency={invoicePlan.currency || normalizeCurrencyCode(content.data?.currency || content.data?.globalCurrency)}
+        onBack={() => {
+          setShowManualInvoice(false);
+          setInvoicePlan(null);
+        }}
+        onDone={() => {
+          setShowManualInvoice(false);
+          setInvoicePlan(null);
+        }}
+      />
     );
   }
 
