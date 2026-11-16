@@ -520,11 +520,14 @@ html, body {
 
 /* Keep the checkout focused in the center of the viewport. */
 .payora-checkout {
+  left: 0;
+  justify-content: center;
+  margin-left: 0;
   align-items: center;
   padding: 18px clamp(16px, 2.4vw, 32px);
 }
 .payora-checkout__container,
-.payora-checkout--payment .payora-checkout__container { width: min(100%, 960px); }
+.payora-checkout--payment .payora-checkout__container { width: min(100%, 960px); margin-inline: auto; }
 .payora-checkout__header { margin-bottom: 12px; }
 .payora-checkout__brand-mark { width: 36px; height: 36px; }
 .payora-checkout__progress { margin-bottom: 14px; }
