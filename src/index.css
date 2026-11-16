@@ -390,6 +390,19 @@ html, body {
 .payora-checkout__stripe-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .payora-checkout__stripe-summary-detail { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; color: #d3deeb; font-size: 12px; }
 .payora-checkout__success-mark { display: grid; width: 58px; height: 58px; place-items: center; margin: 0 auto 17px; color: #1b755c; background: #e7f5ef; border: 1px solid #cfe9dc; border-radius: 50%; }
+.payora-checkout__success-grid { align-items: start; }
+.payora-checkout__success-card { min-height: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.payora-checkout__success-card .payora-checkout__eyebrow { margin-top: 2px; }
+.payora-checkout__success-card .payora-checkout__title { margin-bottom: 10px; }
+.payora-checkout__success-card .payora-checkout__description { max-width: 470px; margin: 0 0 24px; }
+.payora-checkout__success-details { display: grid; width: min(100%, 470px); gap: 0; margin: 0; padding: 4px 0; text-align: left; border-top: 1px solid #e4eaf2; border-bottom: 1px solid #e4eaf2; }
+.payora-checkout__success-details > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 2px; }
+.payora-checkout__success-details dt { color: #53657d; font-size: 14px; }
+.payora-checkout__success-details dd { margin: 0; color: #172d4c; font-size: 14px; font-weight: 700; text-align: right; }
+.payora-checkout__success-reference { display: grid; width: min(100%, 470px); gap: 6px; margin-top: 16px; padding: 13px 15px; color: #52647b; background: #f5f8fb; border: 1px solid #e1e8f0; border-radius: 11px; text-align: left; }
+.payora-checkout__success-reference span { font-size: 14px; font-weight: 600; }
+.payora-checkout__success-reference strong { color: #243b5b; font-size: 14px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; user-select: all; }
+.payora-checkout__success-return { width: min(100%, 250px); margin-top: 20px; }
 
 @media (max-width: 760px) {
   .payora-checkout { padding: 18px 14px 28px; }
@@ -415,8 +428,12 @@ html, body {
 .payora-vgs-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .payora-vgs-field { min-width: 0; margin-top: 13px; }
 .payora-vgs-field label { display: block; margin-bottom: 6px; color: #263b56; font-size: 14px; font-weight: 650; }
-.payora-vgs-field__frame { min-height: 48px; padding: 3px; overflow: hidden; background: #fff; border: 1px solid #cbd7e5; border-radius: 9px; }
+.payora-vgs-field__format { float: right; color: #536982; font-size: 14px; font-weight: 550; letter-spacing: .02em; }
+.payora-vgs-field__frame { box-sizing: border-box; height: 56px; min-height: 56px; padding: 2px; overflow: hidden; background: #fff; border: 1px solid #cbd7e5; border-radius: 9px; }
+.payora-vgs-field__frame iframe { display: block; width: 100% !important; height: 48px !important; border: 0; }
 .payora-vgs-field__frame:focus-within { border-color: #527cae; box-shadow: 0 0 0 3px rgb(66 111 170 / 13%); }
+.payora-vgs-field__hint { margin: 9px 0 0; color: #53657d; font-size: 14px; line-height: 1.45; }
+.payora-vgs-field__hint strong { color: #263b56; font-weight: 700; }
 .payora-vgs-form > .payora-checkout__button { width: 100%; margin-top: 18px; }
 .payora-vault__provider-heading { display: flex; align-items: center; gap: 9px; color: #18365f; font-size: 15px; font-weight: 700; }
 .payora-vault__provider-heading svg { color: #32775e; }

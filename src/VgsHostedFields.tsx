@@ -141,6 +141,7 @@ export function VgsHostedFields({
       const inputCss = {
         color: '#17243a', 'font-size': '16px', 'font-family': 'Arial, sans-serif',
         'line-height': '22px', 'padding': '12px 13px', 'background-color': '#ffffff',
+        'box-sizing': 'border-box', width: '100%', height: '48px',
       };
       const fields = [
         form.field(`#vgs-number-${localId}`, {
@@ -246,12 +247,14 @@ export function VgsHostedFields({
       </div>
       <div className="payora-vgs-field-row">
         <div className="payora-vgs-field">
-          <label>Expiration date</label><div id={`vgs-expiry-${localId}`} className="payora-vgs-field__frame" />
+          <label>Expiration date <span className="payora-vgs-field__format">MM / YYYY</span></label>
+          <div id={`vgs-expiry-${localId}`} className="payora-vgs-field__frame" />
         </div>
         <div className="payora-vgs-field">
           <label>Security code</label><div id={`vgs-cvc-${localId}`} className="payora-vgs-field__frame" />
         </div>
       </div>
+      <p className="payora-vgs-field__hint">Enter the full 4-digit year, for example <strong>08 / 2028</strong>.</p>
       {!fieldsReady && !error && <p className="payora-vault__muted">Loading secure card fields…</p>}
       {fieldsReady && !fieldsValid && <p className="payora-vault__muted" role="status">
         {[

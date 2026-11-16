@@ -238,13 +238,26 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         <div className="payora-checkout__container">
           <CheckoutHeader />
           <CheckoutProgress active={3} />
-          <div className="payora-checkout__grid">
-            <section className="payora-checkout__main">
+          <div className="payora-checkout__grid payora-checkout__success-grid">
+            <section className="payora-checkout__main payora-checkout__success-card">
               <div className="payora-checkout__success-mark"><CheckCircle2 size={29} /></div>
               <div className="payora-checkout__eyebrow">Payment complete</div>
               <h1 className="payora-checkout__title">Payment confirmed</h1>
-              <p className="payora-checkout__description">The payment service confirmed your payment for {displayPlanName}.</p>
-              {confirmedReference && <div className="payora-checkout__status-panel">Reference<br /><strong>{confirmedReference}</strong></div>}
+              <p className="payora-checkout__description">Your payment for {displayPlanName} was confirmed securely. Keep the reference below for support.</p>
+              <dl className="payora-checkout__success-details">
+                <div><dt>Plan</dt><dd>{displayPlanName}</dd></div>
+                <div><dt>Amount confirmed</dt><dd>{formatCheckoutAmount(checkout?.amount || amount || '0.00', checkout?.currency || currency)}</dd></div>
+                {billingText && <div><dt>Billing</dt><dd>{billingText}</dd></div>}
+              </dl>
+              {(checkout?.purchaseId || confirmedReference) && (
+                <div className="payora-checkout__success-reference">
+                  <span>Checkout reference</span>
+                  <strong>{checkout?.purchaseId || confirmedReference}</strong>
+                </div>
+              )}
+              <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>
+                Return to plans <ArrowRight size={16} />
+              </button>
             </section>
             <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout?.amount} planAmount={amount} currency={checkout?.currency || currency} unitAmount={checkout?.unitAmount} quantity={checkout?.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} />
           </div>
