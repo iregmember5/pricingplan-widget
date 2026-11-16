@@ -631,6 +631,14 @@ html, body {
 .payora-vgs-field__success { color: #21684f; }
 .payora-checkout__main :focus-visible,
 .payora-checkout__summary :focus-visible { outline: 3px solid #6d93c6; outline-offset: 3px; }
+.payora-checkout__button:not(.payora-checkout__button--subtle) {
+  background: #24456c;
+  box-shadow: 0 6px 14px rgb(28 53 84 / 18%);
+}
+.payora-checkout__button:not(.payora-checkout__button--subtle):hover:not(:disabled) {
+  background: #1b385a;
+  box-shadow: 0 8px 17px rgb(28 53 84 / 22%);
+}
 
 @media (max-width: 760px) {
   .payora-checkout__summary { padding: 0 !important; }
