@@ -460,3 +460,60 @@ html, body {
   .payora-vault__actions { flex-direction: column; }
   .payora-vault__actions > button { flex-basis: auto; }
 }
+
+/* Unified visual polish across review, payment, saved-card and confirmation. */
+.payora-checkout {
+  padding: clamp(18px, 3vw, 34px);
+  background: #f3f6fa;
+}
+.payora-checkout__container,
+.payora-checkout--payment .payora-checkout__container { width: min(100%, 1040px); }
+.payora-checkout__header { margin-bottom: 16px; }
+.payora-checkout__brand-mark { width: 40px; height: 40px; border-radius: 11px; }
+.payora-checkout__secure-label { padding: 8px 12px; }
+.payora-checkout__grid,
+.payora-checkout--payment .payora-checkout__grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(290px, .82fr);
+  align-items: stretch;
+  gap: 14px;
+}
+.payora-checkout__main,
+.payora-checkout__summary { border-radius: 16px; }
+.payora-checkout__main { padding: clamp(22px, 3vw, 30px); }
+.payora-checkout__summary,
+.payora-checkout--payment .payora-checkout__summary { padding: clamp(22px, 2.7vw, 28px); }
+.payora-checkout__button {
+  min-height: 49px;
+  background: #304fc9;
+  border-radius: 9px;
+  box-shadow: 0 5px 12px rgb(48 79 201 / 17%);
+}
+.payora-checkout__button:hover:not(:disabled) { background: #2744b7; box-shadow: 0 7px 16px rgb(48 79 201 / 22%); }
+.payora-checkout__progress { margin-bottom: 20px; }
+.payora-checkout__progress-dot { width: 21px; height: 21px; }
+.payora-checkout__progress-step.is-active .payora-checkout__progress-dot { background: #304fc9; }
+.payora-checkout__success-card { min-height: 0; padding-block: 32px; }
+.payora-checkout__success-mark { width: 54px; height: 54px; margin-bottom: 14px; }
+.payora-checkout__success-return { background: #f0f4fa; border: 1px solid #dce5ef; box-shadow: none; }
+.payora-checkout__success-return:hover:not(:disabled) { color: #173d76; background: #e7eef7; }
+.payora-vault__provider-box { margin: 18px 0 14px; padding: 16px; border-radius: 12px; }
+.payora-vault__actions { display: flex; flex-direction: column; gap: 9px; }
+.payora-vault__actions > button { flex: 0 0 auto; width: 100%; }
+.payora-vault__actions > button:not(.payora-checkout__button--subtle) { order: 0; }
+.payora-vault__actions > button.payora-checkout__button--subtle { order: 1; }
+.payora-vault__actions > .payora-checkout__text-button { order: 2; width: auto; align-self: center; }
+
+@media (max-width: 760px) {
+  .payora-checkout { padding: 16px 12px 22px; }
+  .payora-checkout__grid,
+  .payora-checkout--payment .payora-checkout__grid { grid-template-columns: 1fr; gap: 12px; }
+  .payora-checkout__summary { order: -1; }
+  .payora-checkout__success-card { padding-block: 28px; }
+}
+
+@media (max-width: 430px) {
+  .payora-checkout__progress { gap: 5px; font-size: 10px; }
+  .payora-checkout__progress-step { gap: 5px; }
+  .payora-checkout__progress-dot { width: 20px; height: 20px; }
+  .payora-checkout__success-details > div { gap: 10px; }
+}
