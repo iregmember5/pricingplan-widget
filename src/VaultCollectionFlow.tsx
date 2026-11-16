@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
-import { CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, formatCheckoutAmount } from './CheckoutUI';
+import { ArrowLeft, CheckCircle2, CreditCard, ExternalLink, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { CardPreview, CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import {
   beginVaultCollection,
   clearVgsSubmissionStarted,
@@ -29,8 +29,6 @@ type Props = {
   onChangePlan: () => void;
 };
 
-const providerNames: Partial<Record<VaultProvider, string>> = { vgs: 'VGS Vault' };
-
 function safeStripeRedirect(action: Record<string, any> | null) {
   if (action?.type !== 'redirect' || typeof action.url !== 'string') return null;
   try {
@@ -44,6 +42,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
   onSuccess, onCheckoutUpdate, onBack, onChangePlan,
 }) => {
   const [collection, setCollection] = useState<VaultCollection | null>(null);
+  const [cardPreview, setCardPreview] = useState({ brand: '', last4: '' });
   const [charge, setCharge] = useState<VaultChargeResult | null>(null);
   const [chargeRequested, setChargeRequested] = useState(false);
   const [vgsSubmissionStarted, setVgsSubmissionStarted] = useState(false);
@@ -52,7 +51,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
   const [unavailableOpen, setUnavailableOpen] = useState(false);
   const busyRef = useRef(false);
   const provider = checkout.collection?.provider as VaultProvider | undefined;
-  const title = provider && providerNames[provider] ? providerNames[provider] : 'secure card provider';
+  const title = 'secure payment provider';
 
   const run = async (work: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -124,6 +123,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
     if (!collection?.can_enter_new_card || chargeRequested || charge?.attempt_id || checkout.attemptId) throw new Error('A new card cannot be requested after payment submission. Check the original payment status.');
     const replacement = await requestNewVaultCard(collection.collection_id, checkout);
     if (collection.provider === 'vgs') clearVgsSubmissionStarted(checkout.purchaseId, collection.collection_id);
+    setCardPreview({ brand: '', last4: '' });
     setCollection(replacement);
     setVgsSubmissionStarted(false);
   });
@@ -161,27 +161,28 @@ export const VaultCollectionFlow: React.FC<Props> = ({
             </button>
             <div className="payora-checkout__eyebrow">Secure card payment</div>
             <h1 className="payora-checkout__title">Pay {formatCheckoutAmount(checkout.amount, checkout.currency)}</h1>
-            <p className="payora-checkout__description">Your payment details are handled by {title}. The payment service confirms the result.</p>
+            <p className="payora-checkout__description">Enter your billing details and card information. We’ll confirm the result securely.</p>
             {checkout.status !== 'ready' && <div className="payora-checkout__alert" role="status">{checkout.status === 'requires_action' ? 'Your bank needs you to approve this payment.' : 'We are checking your original checkout. Please do not pay again.'}</div>}
             {error && !unavailableOpen && <div className="payora-checkout__alert" role="alert">{error}</div>}
-            {charge && <div className={`payora-vault__state payora-vault__state--${charge.status}`} role="status">
+            {charge && <div className={`payora-vault__state payora-vault__state--${charge.status}`} role="status" aria-live="polite">
               {charge.status === 'succeeded' ? <><CheckCircle2 size={18} /> Payment confirmed</> : charge.status === 'requires_action' ? 'Bank verification is required.' : charge.status === 'failed' ? 'This payment did not complete. Keep the reference for support.' : charge.status === 'cancelled' ? 'This payment was cancelled.' : charge.status === 'uncertain' ? 'We are checking your payment. Please do not pay again.' : 'Your payment is processing. Check its status before taking another action.'}
-              {(charge.attempt_id || charge.transaction_id) && <small>Reference: {String(charge.transaction_id || charge.attempt_id)}</small>}
             </div>}
 
             {!hasAttempt && needsSdk && (
               <div className="payora-vault__provider-box">
-                <div className="payora-vault__provider-heading"><ShieldCheck size={17} /> {title} card entry</div>
+                <div className="payora-vault__provider-heading"><ShieldCheck size={17} /> Secure card entry</div>
                 <p className="payora-vault__error" role="alert">This provider is selected by the payment service, but its approved browser SDK adapter is not installed in this widget build. No card details were collected and no payment was submitted. Contact the payments team to install and validate the provider’s approved SDK version.</p>
               </div>
             )}
 
             {!hasAttempt && collection?.state === 'collecting' && provider === 'vgs' && (
               <div className="payora-vault__provider-box">
-                <div className="payora-vault__provider-heading"><ShieldCheck size={17} /> VGS hosted card fields</div>
+                <div className="payora-vault__provider-heading"><ShieldCheck size={17} /> Secure card entry</div>
+                <CardPreview brand={cardPreview.brand} last4={cardPreview.last4} />
                 <VgsHostedFields
                   config={collection.collection || {}}
                   disabled={busy || vgsSubmissionStarted}
+                  onCardMetadataChange={setCardPreview}
                   onSubmitStart={() => {
                     try {
                       markVgsSubmissionStarted(checkout.purchaseId, collection.collection_id);
@@ -196,6 +197,10 @@ export const VaultCollectionFlow: React.FC<Props> = ({
                   }}
                 />
               </div>
+            )}
+
+            {!hasAttempt && collection?.state === 'ready' && provider === 'vgs' && (
+              <CardPreview brand={cardPreview.brand} last4={cardPreview.last4} />
             )}
 
             {!hasAttempt && collection?.state === 'collecting' && provider === 'vgs' && vgsSubmissionStarted && (
@@ -213,15 +218,19 @@ export const VaultCollectionFlow: React.FC<Props> = ({
             {redirectUrl && <a className="payora-checkout__button" href={redirectUrl} target="_blank" rel="noopener noreferrer">Continue to bank verification <ExternalLink size={16} /></a>}
             {charge?.status === 'requires_action' && !redirectUrl && <p className="payora-vault__error" role="alert">The bank verification action is missing or unsupported. Check payment status before proceeding.</p>}
 
+            {canShowCardAction && <div className="payora-checkout__ready-card" role="status">
+              <span className="payora-checkout__ready-card-icon"><CreditCard size={18} /></span>
+              <span><strong>Card ready to pay</strong><small>Secure card details are prepared for this checkout.</small></span>
+              {collection?.can_enter_new_card && <button type="button" onClick={changeCard} disabled={busy}>Change</button>}
+            </div>}
+
             <div className="payora-vault__actions">
-              <button className="payora-checkout__button payora-checkout__button--subtle" type="button" onClick={refreshCollection} disabled={busy}>
-                {busy ? <><span className="payora-checkout__spinner" /> Checking…</> : <><RefreshCw size={15} /> Check status</>}
-              </button>
-              {canShowCardAction && <button className="payora-checkout__button" type="button" onClick={pay} disabled={busy}>{busy ? <><span className="payora-checkout__spinner" /> Processing securely…</> : <>Pay {formatCheckoutAmount(checkout.amount, checkout.currency)} <ArrowRight size={16} /></>}</button>}
-              {!hasAttempt && collection?.can_enter_new_card && (collection.state !== 'collecting' || vgsSubmissionStarted) && <button className="payora-checkout__text-button" type="button" onClick={changeCard} disabled={busy}>Enter another card</button>}
+              {canShowCardAction && <button className="payora-checkout__button" type="button" onClick={pay} disabled={busy}>{busy ? <><span className="payora-checkout__spinner" /> Processing…</> : <><LockKeyhole size={16} /> Pay {formatCheckoutAmount(checkout.amount, checkout.currency)}</>}</button>}
+              {!hasAttempt && !canShowCardAction && collection?.can_enter_new_card && (collection.state !== 'collecting' || vgsSubmissionStarted) && <button className="payora-checkout__text-button" type="button" onClick={changeCard} disabled={busy}>Enter another card</button>}
+              {(hasAttempt || collection?.state === 'uncertain' || vgsSubmissionStarted || Boolean(error)) && <button className="payora-checkout__text-button payora-checkout__refresh-link" type="button" onClick={refreshCollection} disabled={busy}>{busy ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}</button>}
             </div>
-            <div className="payora-checkout__card-assurance"><ShieldCheck size={15} /> Card data is processed by the selected secure provider. Powered by Stripe.</div>
-            <p className="payora-checkout__reference">Checkout reference: {checkout.purchaseId}</p>
+            <div className="payora-checkout__card-assurance"><ShieldCheck size={15} /> Card details are encrypted in secure fields and never reach our payment servers.</div>
+            <SupportId value={checkout.purchaseId} />
           </section>
           <OrderSummary planName={checkout.planName} features={planFeatures} amount={checkout.amount} unitAmount={checkout.unitAmount} quantity={checkout.quantity} currency={checkout.currency} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={!hasAttempt ? onChangePlan : undefined} />
         </div>

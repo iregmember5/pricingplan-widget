@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
-import { CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, formatCheckoutAmount } from './CheckoutUI';
+import { BillingEmailField, CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import { StripeIntegration } from './StripeIntegration';
 import { StripeProvider } from './StripeProvider';
 import {
@@ -249,12 +249,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 <div><dt>Amount confirmed</dt><dd>{formatCheckoutAmount(checkout?.amount || amount || '0.00', checkout?.currency || currency)}</dd></div>
                 {billingText && <div><dt>Billing</dt><dd>{billingText}</dd></div>}
               </dl>
-              {(checkout?.purchaseId || confirmedReference) && (
-                <div className="payora-checkout__success-reference">
-                  <span>Checkout reference</span>
-                  <strong>{checkout?.purchaseId || confirmedReference}</strong>
-                </div>
-              )}
+              {(checkout?.purchaseId || confirmedReference) && <SupportId value={checkout?.purchaseId || confirmedReference} />}
               <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>
                 Return to plans <ArrowRight size={16} />
               </button>
@@ -315,17 +310,17 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       <div className="payora-checkout">
         <div className="payora-checkout__container">
           <CheckoutHeader />
+          <CheckoutProgress active={2} />
           <div className="payora-checkout__grid">
             <section className="payora-checkout__main">
               <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>
-              <CheckoutProgress active={2} />
               <div className="payora-checkout__eyebrow">Checkout update</div>
               <h1 className="payora-checkout__title">We’re checking your payment</h1>
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
-              <div className="payora-checkout__status-panel">Payment reference<br /><strong>{checkout.purchaseId}</strong></div>
-              <button className="payora-checkout__button payora-checkout__button--subtle" onClick={checkStatus} disabled={loading} style={{ marginTop: 18 }}>
-                {loading ? <><span className="payora-checkout__spinner" /> Checking securely…</> : <>Check original checkout status <ArrowRight size={16} /></>}
+              <SupportId value={checkout.purchaseId} />
+              <button className="payora-checkout__text-button payora-checkout__refresh-link" onClick={checkStatus} disabled={loading}>
+                {loading ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
               </button>
               <p className="payora-checkout__footer">Keep this page open if your bank is still processing the payment. Do not submit another payment.</p>
             </section>
@@ -341,18 +336,14 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     <div className="payora-checkout">
       <div className="payora-checkout__container">
         <CheckoutHeader />
+        <CheckoutProgress active={1} />
         <div className="payora-checkout__grid">
           <section className="payora-checkout__main">
             <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>
-            <CheckoutProgress active={1} />
             <div className="payora-checkout__eyebrow">Your payment, protected</div>
             <h1 className="payora-checkout__title">Complete your purchase</h1>
-              <p className="payora-checkout__description">Review the verified total, then continue to secure card entry.</p>
-            <div className="payora-checkout__field">
-              <label htmlFor="payora-checkout-email">Billing email <span>(optional)</span></label>
-              <input className="payora-checkout__input" id="payora-checkout-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
-              <p className="payora-checkout__field-note">Used only as a billing detail where supported.</p>
-            </div>
+            <p className="payora-checkout__description">Review your plan and total, and add a billing email if you’d like a payment update.</p>
+            <BillingEmailField value={email} onChange={setEmail} />
             {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
             <button className="payora-checkout__button" type="button" onClick={() => beginCheckout()} disabled={loading || priceTimedOut || unavailableModalOpen}>
               {loading ? <><span className="payora-checkout__spinner" /> Preparing your secure checkout…</> : <>{retryCreationRequired ? 'Retry secure checkout' : 'Continue'}{continuePriceLabel ? ` · ${continuePriceLabel}` : ' to payment'} <ArrowRight size={17} /></>}

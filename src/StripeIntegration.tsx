@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LockKeyhole } from 'lucide-react';
 import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, formatCheckoutAmount } from './CheckoutUI';
+import { CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import { getWidgetCheckoutStatus, type WidgetCheckoutIdentity, type WidgetCheckoutSession } from './widgetCheckoutService';
 import { submitWidgetPayment } from './routerService';
 
@@ -174,10 +174,10 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
     <div className="payora-checkout payora-checkout--payment">
       <div className="payora-checkout__container">
         <CheckoutHeader />
+        <CheckoutProgress active={2} />
         <div className="payora-checkout__grid">
           <section className="payora-checkout__main">
             <button className="payora-checkout__back" type="button" onClick={onBack}><ArrowLeft size={15} /> Back to billing details</button>
-            <CheckoutProgress active={2} />
             <div className="payora-checkout__eyebrow">Encrypted card entry</div>
             <h1 className="payora-checkout__title">{showStatus ? 'Payment status' : 'Payment details'}</h1>
             <p className="payora-checkout__description">{showStatus ? statusMessage(checkoutState.status) : 'Enter your card details to complete this secure payment.'}</p>
@@ -188,9 +188,9 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
               <span className="payora-checkout__card-brand payora-checkout__card-brand--amex">AMEX</span>
               <span className="payora-checkout__accepted-caption">Credit and debit</span>
             </div>}
-            {checkoutState.purchaseId && <div className="payora-checkout__reference">Checkout reference: {checkoutState.purchaseId}</div>}
             {canShowCardForm && !attemptStarted ? (
               <form className="payora-checkout__card-form" onSubmit={handleSubmit}>
+                {/* STRIPE ELEMENTS BOUNDARY: keep provider fields and SDK submission wiring unchanged. */}
                 <div className="payora-checkout__field">
                   <label htmlFor="payora-card-number">Card number</label>
                   <div className={`payora-checkout__stripe-field${cardErrors.number ? ' has-error' : ''}`} id="payora-card-number">
@@ -224,9 +224,11 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
                   </div>
                 </div>
                 {error && (!serviceUnavailable || attemptStarted) && <div role="alert" className="payora-checkout__alert">{error}</div>}
-                <button className="payora-checkout__button" type="submit" disabled={!stripe || !completeCard || processing || unavailableModalOpen}>
-                  {processing ? <><span className="payora-checkout__spinner" /> Processing securely…</> : <>Pay {amountLabel} <ArrowRight size={17} /></>}
+                <button className="payora-checkout__button" type="submit" disabled={!stripe || !completeCard || processing || unavailableModalOpen} title={!completeCard ? 'Complete the card details to continue.' : undefined}>
+                  {processing ? <><span className="payora-checkout__spinner" /> Processing…</> : <><LockKeyhole size={16} /> Pay {amountLabel}</>}
                 </button>
+                {!completeCard && <p className="payora-checkout__button-hint">Enter your card number, expiration date, and security code to continue.</p>}
+                <div className="payora-checkout__trust payora-checkout__trust--payment"><span><LockKeyhole size={14} /> 256-bit encryption</span><span>VISA · Mastercard · AMEX</span></div>
               </form>
             ) : (
               <div className="payora-checkout__status-content">
@@ -236,13 +238,14 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
                     {processing ? 'Waiting for your bank…' : <>Continue bank authentication <ArrowRight size={17} /></>}
                   </button>
                 ) : (
-                  <button className="payora-checkout__button payora-checkout__button--subtle" type="button" onClick={refreshStatus} disabled={processing}>
-                    {processing ? 'Checking status…' : <>Check payment status <ArrowRight size={17} /></>}
+                  <button className="payora-checkout__text-button payora-checkout__refresh-link" type="button" onClick={refreshStatus} disabled={processing}>
+                    {processing ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
                   </button>
                 )}
                 <p className="payora-checkout__card-assurance">Use this checkout reference while we verify the payment. Don’t submit another payment.</p>
               </div>
             )}
+            {checkoutState.purchaseId && <SupportId value={checkoutState.purchaseId} />}
           </section>
           <OrderSummary
             planName={checkoutState.planName || 'Your selection'}

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, CreditCard, LockKeyhole, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Copy, CreditCard, LockKeyhole, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
 export function formatCheckoutAmount(amount: string, currency: string) {
   const value = Number(amount);
@@ -20,6 +20,59 @@ export function CheckoutHeader() {
       </div>
       <div className="payora-checkout__secure-label"><ShieldCheck size={15} /> Secure connection</div>
     </header>
+  );
+}
+
+export function BillingEmailField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="payora-checkout__field payora-checkout__billing-email">
+      <label htmlFor="payora-checkout-email">Billing email <span>(optional)</span></label>
+      <input className="payora-checkout__input" id="payora-checkout-email" type="email" autoComplete="email" value={value} onChange={(event) => onChange(event.target.value)} placeholder="you@example.com" />
+      <p className="payora-checkout__field-note">Used as a billing detail where supported.</p>
+    </div>
+  );
+}
+
+export function SupportId({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="payora-checkout__support-id">
+      <span>Support ID</span>
+      <code>{value}</code>
+      <button type="button" onClick={copy} aria-label={copied ? 'Support ID copied' : 'Copy support ID'}>
+        {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
+export function CardPreview({ brand, last4 }: { brand: string; last4: string }) {
+  const brandLabels: Record<string, string> = {
+    visa: 'VISA', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover',
+    dinersclub: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay', maestro: 'Maestro',
+  };
+  const label = brandLabels[brand.toLowerCase()] || 'Card';
+  return (
+    <div className="payora-card-preview" aria-label="Secure card preview">
+      <div className="payora-card-preview__top"><span>{label}</span><span>SECURE PAYMENT</span></div>
+      <div className="payora-card-preview__number" aria-label={last4 ? `Card ending in ${last4}` : 'Card number not entered'}>
+        <span>••••</span><span>••••</span><span>••••</span><strong>{last4 || '••••'}</strong>
+      </div>
+      <div className="payora-card-preview__bottom">
+        <div><small>Secure payment</small><strong>Card details protected</strong></div>
+        <div><small>Expiry</small><strong>•• / ••</strong></div>
+      </div>
+    </div>
   );
 }
 
@@ -167,20 +220,22 @@ export function OrderSummary({
 }: OrderSummaryProps) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState('');
+  const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false);
   const shownAmount = amount || planAmount;
   const hasPrice = Boolean(shownAmount && currency);
   const priceConfirmed = Boolean(amount);
-  const fallbackFeatures = features.length ? features.slice(0, 3) : [
-    'Secure card payment',
-    'Payment status tracking',
-    'Access after payment confirmation',
-  ];
+  const displayedFeatures = features.slice(0, 3);
   const planLine = unitAmount
     ? formatCheckoutAmount((Number(unitAmount) * quantity).toFixed(2), currency)
     : planAmount ? formatCheckoutAmount(planAmount, currency) : amount && quantity === 1 ? formatCheckoutAmount(amount, currency) : null;
 
   return (
     <aside className="payora-checkout__summary">
+      <button type="button" className="payora-checkout__summary-mobile-toggle" aria-expanded={mobileSummaryOpen} onClick={() => setMobileSummaryOpen((open) => !open)}>
+        <span>Order summary</span>
+        <span>{hasPrice ? formatCheckoutAmount(shownAmount!, currency) : 'Review total'} <ChevronDown size={16} className={mobileSummaryOpen ? 'is-open' : ''} /></span>
+      </button>
+      <div className={`payora-checkout__summary-content${mobileSummaryOpen ? ' is-open' : ''}`}>
       <div className="payora-checkout__summary-label">Order summary</div>
       <div className="payora-checkout__summary-plan">
         <div className="payora-checkout__summary-plan-heading">
@@ -191,9 +246,9 @@ export function OrderSummary({
           </div>
           {onChangePlan && <button type="button" className="payora-checkout__change-plan" onClick={onChangePlan}>Change plan</button>}
         </div>
-        <ul className="payora-checkout__plan-features">
-          {fallbackFeatures.map((feature, index) => <li key={`${feature}-${index}`}>{feature}</li>)}
-        </ul>
+        {displayedFeatures.length > 0 && <ul className="payora-checkout__plan-features">
+          {displayedFeatures.map((feature, index) => <li key={`${feature}-${index}`}>{feature}</li>)}
+        </ul>}
       </div>
       <div className="payora-checkout__summary-total" aria-live="polite">
         <div className="payora-checkout__summary-total-label">Total due</div>
@@ -205,10 +260,10 @@ export function OrderSummary({
         <p className="payora-checkout__summary-note">{priceConfirmed ? 'Final amount confirmed by the payment service.' : hasPrice ? 'Published plan price; final total confirmed before payment.' : 'Confirming the published offer price…'}</p>
       </div>
       <div className="payora-checkout__line-items" aria-label="Price breakdown">
-        <div><span>Plan price{quantity > 1 ? ` × ${quantity}` : ''}</span><strong>{planLine || (hasPrice ? formatCheckoutAmount(shownAmount!, currency) : 'Calculated at next step')}</strong></div>
-        <div><span>Tax</span><strong>{taxAmount ? formatCheckoutAmount(taxAmount, currency) : priceConfirmed ? 'Included in total' : 'Calculated at next step'}</strong></div>
-        <div><span>Discount</span><strong>{discountAmount ? `−${formatCheckoutAmount(discountAmount, currency)}` : priceConfirmed ? '$0.00' : 'Calculated at next step'}</strong></div>
-        <div className="payora-checkout__line-total"><span>Total</span><strong>{hasPrice ? formatCheckoutAmount(shownAmount!, currency) : 'Calculated at next step'}</strong></div>
+        <div><span>Plan price{quantity > 1 ? ` × ${quantity}` : ''}</span><strong>{planLine || (hasPrice ? formatCheckoutAmount(shownAmount!, currency) : 'Confirming price…')}</strong></div>
+        <div><span>Tax</span><strong>{taxAmount ? formatCheckoutAmount(taxAmount, currency) : 'Included'}</strong></div>
+        <div><span>Discount</span><strong>{discountAmount ? `−${formatCheckoutAmount(discountAmount, currency)}` : formatCheckoutAmount('0.00', currency)}</strong></div>
+        <div className="payora-checkout__line-total"><span>Total</span><strong>{hasPrice ? formatCheckoutAmount(shownAmount!, currency) : '—'}</strong></div>
       </div>
       <div className="payora-checkout__refund-support">
         <div>30-day refund requests</div>
@@ -226,7 +281,7 @@ export function OrderSummary({
         </form>}
       </div>
       <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by Stripe</div>
-      <div className="payora-checkout__summary-trust"><ShieldCheck size={15} /> Card details are securely processed by Stripe.</div>
+      </div>
     </aside>
   );
 }

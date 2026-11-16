@@ -557,3 +557,88 @@ html, body {
   .payora-checkout__summary,
   .payora-checkout--payment .payora-checkout__summary { padding: 18px; }
 }
+
+/* Ticket-style order details and a masked, non-sensitive card preview. */
+.payora-checkout__summary {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(155deg, #263f63 0%, #17263d 100%);
+}
+.payora-checkout__summary-plan {
+  border: 1px solid rgb(222 234 248 / 28%);
+  background: rgb(255 255 255 / 8%);
+  border-radius: 13px;
+}
+.payora-checkout__line-items {
+  position: relative;
+  margin-top: 12px;
+  padding: 17px 0;
+  border-top: 1px dashed rgb(230 239 249 / 38%);
+  border-bottom: 1px dashed rgb(230 239 249 / 38%);
+}
+.payora-checkout__line-items::before,
+.payora-checkout__line-items::after {
+  position: absolute;
+  top: 50%;
+  width: 17px;
+  height: 17px;
+  content: '';
+  background: #f3f6fa;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+.payora-checkout__line-items::before { left: -29px; }
+.payora-checkout__line-items::after { right: -29px; }
+.payora-checkout__summary-mobile-toggle { color: #fff; }
+.payora-checkout__summary-mobile-toggle { display: none; }
+.payora-checkout__summary-powered,
+.payora-checkout__summary-trust { color: #e2eaf5; }
+.payora-checkout__cardholder-field { margin: 16px 0 8px; }
+.payora-checkout__cardholder-field .payora-checkout__input { min-height: 48px; font-size: 16px; }
+.payora-checkout__card-preview {
+  position: relative;
+  display: grid;
+  min-height: 156px;
+  gap: 23px;
+  margin: 16px 0 20px;
+  padding: 18px 20px;
+  overflow: hidden;
+  color: #f8fbff;
+  background: radial-gradient(ellipse at 85% 10%, rgb(91 142 218 / 40%), transparent 43%), linear-gradient(135deg, #355783, #192d4b 72%);
+  border: 1px solid rgb(226 238 252 / 28%);
+  border-radius: 16px;
+  box-shadow: 0 12px 24px rgb(20 36 59 / 17%);
+}
+.payora-card-preview__top,
+.payora-card-preview__bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.payora-card-preview__top span:first-child { font-size: 14px; font-weight: 800; letter-spacing: .04em; }
+.payora-card-preview__top span:last-child { color: #d7e5f8; font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.payora-card-preview__number { display: flex; gap: clamp(7px, 2vw, 17px); align-items: center; font-size: clamp(16px, 2.2vw, 20px); letter-spacing: .08em; }
+.payora-card-preview__number span { color: #dce8f7; }
+.payora-card-preview__number strong { color: #fff; font-weight: 700; }
+.payora-card-preview__bottom > div { display: grid; min-width: 0; gap: 4px; }
+.payora-card-preview__bottom small { color: #c8d8ec; font-size: 11px; }
+.payora-card-preview__bottom strong { max-width: 220px; overflow: hidden; color: #fff; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.payora-checkout__support-id { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; margin-top: 13px; color: #53657d; font-size: 12px; }
+.payora-checkout__support-id code { max-width: min(100%, 280px); overflow: hidden; color: #344a68; font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; }
+.payora-checkout__support-id button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; color: #284f82; background: #f1f5fa; border: 1px solid #d7e2ef; border-radius: 6px; font: inherit; font-weight: 650; cursor: pointer; }
+.payora-checkout__support-id button:focus-visible { outline: 3px solid #6d93c6; outline-offset: 2px; }
+.payora-vgs-field.has-error .payora-vgs-field__frame { border-color: #a72d38; box-shadow: 0 0 0 3px rgb(167 45 56 / 12%); }
+.payora-vgs-field.is-valid .payora-vgs-field__frame { border-color: #38856b; }
+.payora-vgs-field__error,
+.payora-vgs-field__success { display: flex; align-items: center; gap: 5px; margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
+.payora-vgs-field__error { color: #9d2632; }
+.payora-vgs-field__success { color: #21684f; }
+.payora-checkout__main :focus-visible,
+.payora-checkout__summary :focus-visible { outline: 3px solid #6d93c6; outline-offset: 3px; }
+
+@media (max-width: 760px) {
+  .payora-checkout__summary { padding: 0 !important; }
+  .payora-checkout__summary-mobile-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 16px 18px; }
+  .payora-checkout__summary-content { display: none; padding: 0 18px 18px; }
+  .payora-checkout__summary-content.is-open { display: block; }
+  .payora-checkout__summary-content .payora-checkout__summary-label { display: none; }
+  .payora-checkout__summary-content .payora-checkout__line-items::before,
+  .payora-checkout__summary-content .payora-checkout__line-items::after { background: #203652; }
+  .payora-card-preview { min-height: 145px; padding: 16px; }
+}

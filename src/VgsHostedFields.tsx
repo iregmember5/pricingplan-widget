@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { CheckCircle2, LockKeyhole } from 'lucide-react';
 
 // The backend handoff returns vault_id/environment/submit_path and uses the
 // classic inbound-proxy form.submit contract. The current VGS script is 4.0.1.
@@ -96,12 +97,14 @@ function safeSubmitPath(value: unknown) {
 export function VgsHostedFields({
   config,
   disabled = false,
+  onCardMetadataChange,
   onSubmitStart,
   onSubmitFinished,
   onValidationFailure,
 }: {
   config: Record<string, any>;
   disabled?: boolean;
+  onCardMetadataChange?: (metadata: { brand: string; last4: string }) => void;
   onSubmitStart: () => boolean;
   onSubmitFinished: () => void;
   onValidationFailure: () => void;
@@ -111,6 +114,7 @@ export function VgsHostedFields({
   const mountedRef = useRef(false);
   const submittedRef = useRef(false);
   const [fieldsReady, setFieldsReady] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
   const [fieldValidity, setFieldValidity] = useState<FieldValidity>({
     number_alias: false,
     expiry: false,
@@ -132,10 +136,21 @@ export function VgsHostedFields({
       return () => { active = false; mountedRef.current = false; };
     }
 
+    // VGS integration boundary: keep the SDK version, hosted field config,
+    // serializers, submit path, and capture payload unchanged.
     void loadVgsCollect().then(async () => {
       if (!active || !window.VGSCollect?.create) return;
       const form = window.VGSCollect.create(vaultId, environment, (state) => {
-        if (active) setFieldValidity(readFieldValidity(state));
+        if (active) {
+          setFieldValidity(readFieldValidity(state));
+          // VGS state is an integration boundary. Only allowlisted brand and
+          // last four digits leave this callback; never read PAN/CVC/aliases.
+          const cardField = state?.number_alias;
+          const brand = typeof cardField?.cardType === 'string' ? cardField.cardType.toLowerCase() : '';
+          const last4 = typeof cardField?.last4 === 'string' && /^\d{4}$/.test(cardField.last4) ? cardField.last4 : '';
+          const allowedBrands = ['visa', 'mastercard', 'amex', 'discover', 'dinersclub', 'jcb', 'unionpay', 'maestro'];
+          onCardMetadataChange?.({ brand: allowedBrands.includes(brand) ? brand : '', last4 });
+        }
       });
       formRef.current = form;
       const inputCss = {
@@ -183,7 +198,11 @@ export function VgsHostedFields({
   }, [config.environment, config.submit_path, config.vault_id, localId]);
 
   const submit = () => {
-    if (disabled || busy || submittedRef.current || !fieldsReady || !fieldsValid || !formRef.current) return;
+    if (disabled || busy || submittedRef.current || !fieldsReady || !formRef.current) return;
+    if (!fieldsValid) {
+      setShowValidation(true);
+      return;
+    }
     const submitPath = safeSubmitPath(config.submit_path);
     if (!submitPath) {
       setError('Secure card submission is not configured. No payment was submitted.');
@@ -242,32 +261,28 @@ export function VgsHostedFields({
 
   return (
     <div className="payora-vgs-form" aria-busy={busy}>
-      <div className="payora-vgs-field">
+      <div className={`payora-vgs-field${showValidation && !fieldValidity.number_alias ? ' has-error' : fieldValidity.number_alias ? ' is-valid' : ''}`}>
         <label>Card number</label><div id={`vgs-number-${localId}`} className="payora-vgs-field__frame" />
+        {showValidation && <p className={fieldValidity.number_alias ? 'payora-vgs-field__success' : 'payora-vgs-field__error'} role={fieldValidity.number_alias ? 'status' : 'alert'} aria-live="polite">{fieldValidity.number_alias ? <><CheckCircle2 size={14} /> Card number looks good.</> : 'Enter a valid card number.'}</p>}
       </div>
       <div className="payora-vgs-field-row">
-        <div className="payora-vgs-field">
+        <div className={`payora-vgs-field${showValidation && !fieldValidity.expiry ? ' has-error' : fieldValidity.expiry ? ' is-valid' : ''}`}>
           <label>Expiration date <span className="payora-vgs-field__format">MM / YYYY</span></label>
           <div id={`vgs-expiry-${localId}`} className="payora-vgs-field__frame" />
+          {showValidation && <p className={fieldValidity.expiry ? 'payora-vgs-field__success' : 'payora-vgs-field__error'} role={fieldValidity.expiry ? 'status' : 'alert'} aria-live="polite">{fieldValidity.expiry ? <><CheckCircle2 size={14} /> Expiration date looks good.</> : fieldValidity.expiryHint || 'Enter a valid, unexpired expiration date.'}</p>}
         </div>
-        <div className="payora-vgs-field">
+        <div className={`payora-vgs-field${showValidation && !fieldValidity.cvc_alias ? ' has-error' : fieldValidity.cvc_alias ? ' is-valid' : ''}`}>
           <label>Security code</label><div id={`vgs-cvc-${localId}`} className="payora-vgs-field__frame" />
+          {showValidation && <p className={fieldValidity.cvc_alias ? 'payora-vgs-field__success' : 'payora-vgs-field__error'} role={fieldValidity.cvc_alias ? 'status' : 'alert'} aria-live="polite">{fieldValidity.cvc_alias ? <><CheckCircle2 size={14} /> Security code looks good.</> : 'Enter a valid security code.'}</p>}
         </div>
       </div>
-      <p className="payora-vgs-field__hint">Enter the full 4-digit year, for example <strong>08 / 2028</strong>.</p>
       {!fieldsReady && !error && <p className="payora-vault__muted">Loading secure card fields…</p>}
-      {fieldsReady && !fieldsValid && <p className="payora-vault__muted" role="status">
-        {[
-          !fieldValidity.number_alias && 'Card number needs attention',
-          !fieldValidity.expiry && (fieldValidity.expiryHint || 'Expiration date needs attention'),
-          !fieldValidity.cvc_alias && 'Security code needs attention',
-        ].filter(Boolean).join('. ')}. Card values stay inside VGS and are not shown here.
-      </p>}
       {error && <p className="payora-vault__error" role="alert">{error}</p>}
-      <button type="button" className="payora-checkout__button" onClick={submit} disabled={disabled || busy || !fieldsReady || !fieldsValid || submittedRef.current}>
-        {busy ? <><span className="payora-checkout__spinner" /> Sending securely…</> : 'Continue securely'}
+      <button type="button" className="payora-checkout__button" onClick={submit} disabled={disabled || busy || !fieldsReady || submittedRef.current} title={!fieldsReady ? 'Secure card fields are loading.' : undefined}>
+        {busy ? <><span className="payora-checkout__spinner" /> Processing…</> : <><LockKeyhole size={16} /> Continue securely</>}
       </button>
-      <p className="payora-vault__muted">Card fields are hosted by VGS. This step prepares your payment; it does not charge your card.</p>
+      {!fieldsValid && fieldsReady && <p className="payora-checkout__button-hint">Complete the card details above, then continue to payment.</p>}
+      <p className="payora-vault__muted">Your card details are encrypted and never touch our servers.</p>
     </div>
   );
 }
