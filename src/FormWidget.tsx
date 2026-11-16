@@ -7,6 +7,11 @@ interface FormWidgetProps {
 }
 
 // Map API response (snake_case) to FormRenderer expected shape
+function parseJsonValue(value: any, fallback: any) {
+  if (typeof value !== 'string') return value ?? fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
 function normalizeConfig(data: any) {
   return {
     id: data.id,
@@ -14,12 +19,13 @@ function normalizeConfig(data: any) {
     title: data.title,
     description: data.description,
     success_message: data.success_msg || data.success_message || 'Thank you for your submission!',
-    fields: data.widget_fields || data.fields || [],
-    theme: data.theme || {},
-    submitButton: data.submit_button || data.submitButton || {},
-    displaySettings: data.display_settings || data.displaySettings || {},
-    header: data.header,
-    footer: data.footer,
+    fields: parseJsonValue(data.widget_fields || data.fields, []),
+    layout: parseJsonValue(data.layout, { type: 'vertical' }),
+    theme: parseJsonValue(data.theme, {}),
+    submitButton: parseJsonValue(data.submit_button || data.submitButton, {}),
+    displaySettings: parseJsonValue(data.display_settings || data.displaySettings, {}),
+    header: parseJsonValue(data.header, undefined),
+    footer: parseJsonValue(data.footer, undefined),
     fontFamily: data.font_family || data.fontFamily || 'system-ui, sans-serif',
     titleSize: data.title_size || data.titleSize || '24px',
     textSize: data.text_size || data.textSize || '16px',

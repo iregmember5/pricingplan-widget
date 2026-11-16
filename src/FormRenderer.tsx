@@ -101,6 +101,19 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [removedGroups, setRemovedGroups] = useState<string[]>([]);
+
+  const pages = config.layout?.type === 'multi-step' ? (config.layout.pages || []) : [];
+  const isMultiStep = pages.length > 0;
+  const currentPage = isMultiStep ? pages[currentPageIndex] : null;
+  const fieldsForCurrentPage = () => {
+    const fields = config.fields || [];
+    if (!isMultiStep) return fields;
+    return (currentPage?.field_ids || [])
+      .map((id: string) => fields.find((field: any) => String(field.id) === String(id)))
+      .filter(Boolean);
+  };
 
   const theme = config.theme || {};
   const submitButton = config.submitButton || {};
@@ -113,10 +126,11 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
     setErrors(prev => { const e = { ...prev }; delete e[fieldId]; return e; });
   };
 
-  const validate = () => {
+  const validate = (fields: any[] = config.fields || []) => {
     const newErrors: Record<string, string> = {};
-    (config.fields || []).forEach((field: any) => {
-      if (field.required && !formData[field.id]) {
+    fields.forEach((field: any) => {
+      const value = formData[field.id];
+      if (field.required && (value === undefined || value === null || value === '' || value === false)) {
         newErrors[field.id] = 'This field is required';
       }
     });
@@ -126,7 +140,11 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate(fieldsForCurrentPage())) return;
+    if (isMultiStep && currentPageIndex < pages.length - 1) {
+      setCurrentPageIndex(index => index + 1);
+      return;
+    }
     setIsSubmitting(true);
     let lastError: Error | null = null;
     for (const base of API_BASE_URLS) {
@@ -138,6 +156,8 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
         if (!res.ok) throw new Error('Submission failed');
         setIsSubmitted(true);
         setFormData({});
+        setCurrentPageIndex(0);
+        setRemovedGroups([]);
         if (config.post_submit_action === 'REDIRECT_URL' && config.redirect_url) {
           setTimeout(() => window.open(config.redirect_url, '_blank'), 2000);
         } else {
@@ -170,8 +190,8 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
   const labelStyle: React.CSSProperties = {
     display: 'block',
     marginBottom: '6px',
-    fontWeight: '500',
-    fontSize: config.textSize || '16px',
+    fontWeight: '600',
+    fontSize: '13px',
     color: textColor,
   };
 
@@ -340,6 +360,53 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
     }
   };
 
+  const renderFieldGridItem = (field: any) => (
+    <div key={field.id} style={{ minWidth: 0 }}>{renderField(field)}</div>
+  );
+
+  const renderGroupedCard = (groupId: string, title: string, fields: any[]) => {
+    if (removedGroups.includes(groupId)) return null;
+    return (
+      <section key={groupId} style={{ gridColumn: '1 / -1', border: '1px solid #d7e2ec', borderRadius: '16px', padding: '20px', background: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+          <strong style={{ color: '#17324d', fontSize: '13px' }}>{title}</strong>
+          <button type="button" onClick={() => {
+            setRemovedGroups(previous => [...previous, groupId]);
+            setFormData(previous => {
+              const next = { ...previous };
+              fields.forEach(field => delete next[field.id]);
+              return next;
+            });
+          }} style={{ padding: '10px 18px', border: '1px solid #9bb5ca', borderRadius: '10px', background: '#fff', color: '#12415f', fontWeight: 600, cursor: 'pointer' }}>Remove</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 12px' }}>
+          {fields.map(renderFieldGridItem)}
+        </div>
+      </section>
+    );
+  };
+
+  const renderCurrentPageFields = () => {
+    const fields = fieldsForCurrentPage();
+    if (currentPage?.id === 'spending') {
+      return Array.from({ length: Math.ceil(fields.length / 2) }, (_, index) => {
+        const group = fields.slice(index * 2, index * 2 + 2);
+        return renderGroupedCard('spending-' + index, group[0]?.label || 'Category ' + (index + 1), group);
+      });
+    }
+    if (currentPage?.id === 'peers') {
+      return Array.from({ length: Math.ceil(fields.length / 5) }, (_, index) => {
+        const group = fields.slice(index * 5, index * 5 + 5);
+        return renderGroupedCard('peer-' + index, 'Peer ' + (index + 1), group);
+      });
+    }
+    return fields.map(renderFieldGridItem);
+  };
+
+  const stepLabels: Record<string, string> = {
+    firm: 'Firm', spending: 'Spending', peers: 'Peers', referral: 'Referral credit', review: 'Review',
+  };
+
   if (isSubmitted) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '2px solid #86efac' }}>
@@ -351,7 +418,8 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
 
   return (
     <div style={{
-      maxWidth: '600px',
+      maxWidth: isMultiStep ? '1000px' : '600px',
+      width: '100%',
       margin: '0 auto',
       padding: '24px',
       backgroundColor: bgColor,
@@ -373,29 +441,46 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
         </div>
       )}
 
-      {/* Fields */}
-      <form onSubmit={handleSubmit}>
-        {(config.fields || []).map((field: any) => renderField(field))}
+      {isMultiStep && (
+        <nav aria-label="Form steps" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+          {pages.map((page: any, index: number) => (
+            <button key={page.id} type="button" aria-current={currentPageIndex === index ? 'step' : undefined}
+              onClick={() => setCurrentPageIndex(index)}
+              style={{ border: '1px solid ' + (currentPageIndex === index ? primaryColor : '#9bb5ca'), borderRadius: '10px', padding: '12px 16px', background: currentPageIndex === index ? primaryColor : '#fff', color: currentPageIndex === index ? '#fff' : '#12415f', fontWeight: 700, cursor: 'pointer' }}>
+              {index + 1} - {stepLabels[page.id] || page.title}
+            </button>
+          ))}
+        </nav>
+      )}
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            width: submitButton.full_width ? '100%' : 'auto',
-            padding: `${submitButton.spacing?.vertical ?? 12}px ${submitButton.spacing?.horizontal ?? 24}px`,
-            backgroundColor: isSubmitting ? '#9ca3af' : (submitButton.colors?.background || primaryColor),
-            color: submitButton.colors?.text || '#ffffff',
-            border: `1px solid ${submitButton.colors?.border || 'transparent'}`,
-            borderRadius: '6px',
-            fontSize: config.textSize || '16px',
-            fontWeight: '600',
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s',
-          }}
-        >
-          {isSubmitting ? 'Submitting...' : (submitButton.text || 'Submit')}
-        </button>
+      {isMultiStep && currentPage && (
+        <div style={{ marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '23px', fontWeight: 700, color: '#102b46', margin: '0 0 8px' }}>{currentPage.title}</h2>
+          {currentPage.description && <p style={{ fontSize: '14px', color: textColor, lineHeight: 1.5, margin: 0 }}>{currentPage.description}</p>}
+        </div>
+      )}
+
+      {currentPage?.id === 'review' && (
+        <div style={{ margin: '12px 0', padding: '16px', border: '1px solid #f2d08e', borderRadius: '10px', background: '#fff8e8', color: '#8a5312', fontSize: '14px', lineHeight: 1.6 }}>
+          <p style={{ margin: 0 }}><strong>Applicant</strong> - Firm {formData['2'] || 'not entered'}</p>
+          <p style={{ margin: '12px 0 0' }}>Interested in: practice - {['22', '27', '32'].filter(id => String(formData[id] || '').trim()).length} professional peer nominations - {['11', '13', '15', '17', '19', '21'].filter(id => String(formData[id] || '').trim()).length} vendor/product entries</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0 16px' }}>
+          {renderCurrentPageFields()}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+          {isMultiStep && currentPageIndex > 0 && (
+            <button type="button" onClick={() => setCurrentPageIndex(index => index - 1)}
+              style={{ padding: '12px 18px', border: '1px solid #9bb5ca', borderRadius: '10px', background: '#fff', color: '#12415f', fontWeight: 700, cursor: 'pointer' }}>&larr; Back</button>
+          )}
+          <button type="submit" disabled={isSubmitting}
+            style={{ width: isMultiStep ? 'auto' : (submitButton.full_width ? '100%' : 'auto'), padding: (submitButton.spacing?.vertical ?? 12) + 'px ' + (submitButton.spacing?.horizontal ?? 24) + 'px', backgroundColor: isSubmitting ? '#9ca3af' : (submitButton.colors?.background || primaryColor), color: submitButton.colors?.text || '#ffffff', border: '1px solid ' + (submitButton.colors?.border || 'transparent'), borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: isSubmitting ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
+            {isSubmitting ? 'Submitting...' : (isMultiStep && currentPageIndex < pages.length - 1 ? (currentPageIndex === 0 && pages[currentPageIndex + 1]?.id === 'spending' ? 'Continue to spending' : 'Continue') : (submitButton.text || 'Submit application'))}
+          </button>
+        </div>
       </form>
 
       {/* Footer */}
