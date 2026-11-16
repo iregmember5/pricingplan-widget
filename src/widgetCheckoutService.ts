@@ -192,9 +192,8 @@ export async function getOrCreateWidgetCheckout(input: {
   widgetId: string;
   planId: string;
   quantity?: number;
-  retryCreation?: boolean;
 }) {
-  const { widgetKind, widgetId, planId, quantity = 1, retryCreation = false } = input;
+  const { widgetKind, widgetId, planId, quantity = 1 } = input;
   const key = storageKey(widgetKind, widgetId, planId);
   const existing = readIdentity(key);
   const identity: WidgetCheckoutIdentity = existing || {
@@ -211,34 +210,11 @@ export async function getOrCreateWidgetCheckout(input: {
     persistIdentity(key, identity);
   }
 
-  if (existing && !retryCreation) {
-    try {
-      const session = await getWidgetCheckoutStatus(identity);
-      return { identity, session, recovered: true };
-    } catch (error: any) {
-      throw new WidgetCheckoutRequestError(
-        error?.message || 'The original checkout could not be recovered. Keep this reference and contact support.',
-        identity,
-        'status',
-      );
-    }
-  }
-
-  if (existing?.createAcknowledged) {
-    // An acknowledged checkout is always recovered through status; never
-    // replay creation after that point.
-    try {
-      const session = await getWidgetCheckoutStatus(identity);
-      return { identity, session, recovered: true };
-    } catch (error: any) {
-      throw new WidgetCheckoutRequestError(
-        error?.message || 'The original checkout could not be recovered. Keep this reference and contact support.',
-        identity,
-        'status',
-      );
-    }
-  }
-
+  // Creation is an idempotent create-or-recover operation keyed by the
+  // persisted reference and secret. Replay it before status so an identity
+  // saved before a lost creation response can be recovered (and so an
+  // acknowledged checkout is resolved to the same canonical purchase).
+  // This endpoint does not submit a payment. Never mint a new identity here.
   let createdSession: WidgetCheckoutSession;
   try {
     const creationBody = await post('/payments/widget-checkouts/', {

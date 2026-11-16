@@ -155,7 +155,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setStep('stripe');
   };
 
-  const beginCheckout = async (retryCreation = false) => {
+  const beginCheckout = async () => {
     if (starting.current || loading) return;
     if (!['one_time', 'payment'].includes(paymentType.trim().toLowerCase())) {
       setError('This checkout currently supports one-time card payments only.');
@@ -180,7 +180,6 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         widgetId: widgetId.trim(),
         planId: planId.trim(),
         quantity: 1,
-        retryCreation,
       });
       setRetryCreationRequired(false);
       openSession(result.identity, result.session);
@@ -342,20 +341,20 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
               <p className="payora-checkout__field-note">Used only as a billing detail where supported.</p>
             </div>
             {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
-            <button className="payora-checkout__button" type="button" onClick={() => beginCheckout(retryCreationRequired)} disabled={loading || priceTimedOut || unavailableModalOpen}>
+            <button className="payora-checkout__button" type="button" onClick={() => beginCheckout()} disabled={loading || priceTimedOut || unavailableModalOpen}>
               {loading ? <><span className="payora-checkout__spinner" /> Preparing your secure checkout…</> : <>{retryCreationRequired ? 'Retry secure checkout' : 'Continue'}{continuePriceLabel ? ` · ${continuePriceLabel}` : ' to payment'} <ArrowRight size={17} /></>}
             </button>
-            {priceTimedOut && <button className="payora-checkout__button payora-checkout__button--subtle" type="button" onClick={() => beginCheckout(retryCreationRequired)} disabled={loading} style={{ marginTop: 10 }}>Retry secure checkout</button>}
+            {priceTimedOut && <button className="payora-checkout__button payora-checkout__button--subtle" type="button" onClick={() => beginCheckout()} disabled={loading} style={{ marginTop: 10 }}>Retry secure checkout</button>}
             <div className="payora-checkout__trust">
               <span className="payora-checkout__trust-item"><LockKeyhole size={14} /> Secure card entry</span>
               <span className="payora-checkout__trust-item"><ShieldCheck size={14} /> No payment on this step</span>
             </div>
           </section>
-          <OrderSummary planName={displayPlanName} features={planFeatures} planAmount={amount} currency={currency} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} priceError={priceTimedOut ? 'Price confirmation timed out.' : undefined} onRetryPrice={priceTimedOut ? () => beginCheckout(retryCreationRequired) : undefined} onChangePlan={onBack} />
+          <OrderSummary planName={displayPlanName} features={planFeatures} planAmount={amount} currency={currency} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} priceError={priceTimedOut ? 'Price confirmation timed out.' : undefined} onRetryPrice={priceTimedOut ? () => beginCheckout() : undefined} onChangePlan={onBack} />
         </div>
         <div className="payora-checkout__footer">Your exact total is confirmed from the published plan before you submit payment.</div>
       </div>
-      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => beginCheckout(retryCreationRequired)} loading={loading} />}
+      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => beginCheckout()} loading={loading} />}
     </div>
   );
 };
