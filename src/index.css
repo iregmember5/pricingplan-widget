@@ -517,3 +517,40 @@ html, body {
   .payora-checkout__progress-dot { width: 20px; height: 20px; }
   .payora-checkout__success-details > div { gap: 10px; }
 }
+
+/* Keep the checkout focused in the center of the viewport. */
+.payora-checkout {
+  align-items: center;
+  padding: 18px clamp(16px, 2.4vw, 32px);
+}
+.payora-checkout__container,
+.payora-checkout--payment .payora-checkout__container { width: min(100%, 960px); }
+.payora-checkout__header { margin-bottom: 12px; }
+.payora-checkout__brand-mark { width: 36px; height: 36px; }
+.payora-checkout__progress { margin-bottom: 14px; }
+.payora-checkout__grid,
+.payora-checkout--payment .payora-checkout__grid { gap: 12px; }
+.payora-checkout__main { padding: clamp(20px, 2.4vw, 26px); }
+.payora-checkout__summary,
+.payora-checkout--payment .payora-checkout__summary { padding: 20px; }
+.payora-checkout__summary-plan { margin-top: 13px; padding: 13px; }
+.payora-checkout__summary-total { margin-top: 16px; padding-bottom: 13px; }
+.payora-checkout__summary-total-value { font-size: clamp(30px, 3.4vw, 38px); }
+.payora-checkout__plan-features { gap: 6px; margin-top: 11px; }
+.payora-checkout__line-items { gap: 8px; padding: 12px 0; }
+.payora-checkout__refund-support { gap: 4px; margin-top: 10px; }
+.payora-checkout__summary-powered { margin-top: 16px; padding-top: 12px; }
+.payora-checkout__summary-trust { margin-top: 8px; }
+.payora-checkout--payment .payora-checkout__main { padding: clamp(20px, 2.4vw, 26px); }
+.payora-checkout__success-card { padding-block: 24px; }
+.payora-checkout__success-card .payora-checkout__description { margin-bottom: 16px; }
+.payora-checkout__success-details > div { padding-block: 9px; }
+.payora-checkout__success-reference { margin-top: 12px; padding: 10px 12px; }
+.payora-checkout__success-return { margin-top: 14px; }
+
+@media (max-width: 760px) {
+  .payora-checkout { align-items: flex-start; padding: 14px 12px 20px; }
+  .payora-checkout__header { margin-bottom: 12px; }
+  .payora-checkout__summary,
+  .payora-checkout--payment .payora-checkout__summary { padding: 18px; }
+}
