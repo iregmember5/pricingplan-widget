@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import FormRenderer from './FormRenderer';
+import { API_BASE_URL } from './apiConfig';
 
 interface FormWidgetProps {
   widgetId: string;
@@ -27,10 +28,7 @@ function normalizeConfig(data: any) {
   };
 }
 
-const API_BASE_URLS = [
-  'https://esign-admin.signmary.com',
-  'https://mypowerly.com/v1',
-];
+const API_BASE_URLS = [API_BASE_URL];
 
 const FormWidget: React.FC<FormWidgetProps> = ({ widgetId }) => {
   const [config, setConfig] = useState<any>(null);
@@ -42,7 +40,7 @@ const FormWidget: React.FC<FormWidgetProps> = ({ widgetId }) => {
       let lastError: Error | null = null;
       for (const base of API_BASE_URLS) {
         try {
-          const res = await fetch(`${base}/api/widgets/form-widgets/public/${widgetId}/`);
+          const res = await fetch(`${base}/widgets/form-widgets/public/${widgetId}/`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           setConfig(normalizeConfig(data));

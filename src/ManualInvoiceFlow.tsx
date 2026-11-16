@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from './apiConfig';
 
 interface ManualInvoiceFlowProps {
   widgetId: string;
@@ -11,10 +12,7 @@ interface ManualInvoiceFlowProps {
   onDone: () => void;
 }
 
-const INVOICE_API_URLS = [
-  'https://esign-admin.signmary.com/api/widgets/manual-invoice/request/',
-  'https://mypowerly.com/api/widgets/manual-invoice/request/',
-];
+const INVOICE_API_URLS = [`${API_BASE_URL}/widgets/manual-invoice/request/`];
 
 export const ManualInvoiceFlow: React.FC<ManualInvoiceFlowProps> = ({
   widgetId,

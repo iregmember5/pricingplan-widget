@@ -2,7 +2,18 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import Widget from './Widget';
 import FormWidget from './FormWidget';
+import { VaultPaymentReturn } from './VaultPaymentReturn';
 import './index.css';
+
+// Bank-return capabilities arrive in the fragment. Capture them and remove
+// the entire query/fragment synchronously before rendering or analytics.
+const paymentReturnToken = new URLSearchParams(window.location.hash.slice(1)).get('payment_return');
+if (paymentReturnToken) {
+  window.history.replaceState(null, '', window.location.pathname);
+  const returnRoot = document.createElement('div');
+  document.body.replaceChildren(returnRoot);
+  ReactDOM.createRoot(returnRoot).render(<VaultPaymentReturn token={paymentReturnToken} />);
+}
 
 // Check if we're in embed mode
 function isEmbedMode(): boolean {
@@ -13,12 +24,12 @@ function isEmbedMode(): boolean {
 function getSlug(): string | null {
   const params = new URLSearchParams(window.location.search);
   let slug = params.get('slug');
-  
+
   // Also check path for /embed/slug format
   if (!slug && window.location.pathname.startsWith('/embed/')) {
     slug = window.location.pathname.split('/embed/')[1];
   }
-  
+
   return slug;
 }
 
@@ -35,19 +46,19 @@ function getWidgetType(container: Element): 'pricing' | 'form' {
 // Extract widget ID from container
 function getWidgetId(container: Element): string {
   const className = container.className;
-  
+
   // Form widget: cont-app-{id}
   const formMatch = className.match(/cont-app-([a-f0-9-]+)/);
   if (formMatch) {
     return formMatch[1];
   }
-  
+
   // Pricing widget: widget-{slug}
   const pricingMatch = className.match(/widget-([a-zA-Z0-9-]+)/);
   if (pricingMatch) {
     return pricingMatch[1];
   }
-  
+
   // Fallback to data attribute
   return container.getAttribute('data-widget-id') || '';
 }
@@ -62,21 +73,21 @@ if (embedMode) {
   // document.body.style.background = 'transparent';
 }
 
-if (!slug || slug.trim() === '') {
+if (!paymentReturnToken && (!slug || slug.trim() === '')) {
   // Check if there are any widget containers on the page
   const formContainers = document.querySelectorAll('[class*="cont-app-"]');
   const pricingContainers = document.querySelectorAll('[class*="widget-"], .pricing-widget');
-  
+
   if (formContainers.length > 0 || pricingContainers.length > 0) {
     // Render widgets in their containers
     [...formContainers, ...pricingContainers].forEach((container) => {
       const widgetType = getWidgetType(container);
       const widgetId = getWidgetId(container);
-      
+
       if (widgetId) {
         console.log(`Rendering ${widgetType} widget:`, widgetId);
         const root = ReactDOM.createRoot(container);
-        
+
         if (widgetType === 'form') {
           root.render(<FormWidget widgetId={widgetId} />);
         } else {
@@ -95,7 +106,7 @@ if (!slug || slug.trim() === '') {
       </div>
     `;
   }
-} else {
+} else if (!paymentReturnToken) {
   // Slug-based mode — check ?type=form to route to form widget
   const widgetTypeParam = new URLSearchParams(window.location.search).get('type');
 

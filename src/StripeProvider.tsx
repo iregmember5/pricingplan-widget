@@ -1,19 +1,19 @@
 import React, { useMemo } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe, Stripe } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 
 interface StripeProviderProps {
   children: React.ReactNode;
-  stripeAccount?: string;
+  publishableKey: string;
+  stripeAccount?: string | null;
 }
 
-export const StripeProvider: React.FC<StripeProviderProps> = ({ children, stripeAccount }) => {
-  const stripePromise = useMemo(() => {
-    const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-    return stripeAccount 
-      ? loadStripe(key, { stripeAccount })
-      : loadStripe(key);
-  }, [stripeAccount]);
+export const StripeProvider: React.FC<StripeProviderProps> = ({ children, publishableKey, stripeAccount }) => {
+  const stripePromise = useMemo(() => (
+    publishableKey
+      ? loadStripe(publishableKey, stripeAccount ? { stripeAccount } : undefined)
+      : Promise.resolve(null)
+  ), [publishableKey, stripeAccount]);
 
   return <Elements stripe={stripePromise}>{children}</Elements>;
 };

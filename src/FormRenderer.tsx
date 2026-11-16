@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { API_BASE_URL } from './apiConfig';
 
 // ── Signature Pad ─────────────────────────────────────────────────────────────
 const SignaturePad: React.FC<{ fieldId: string; value: string; onChange: (val: string) => void; error?: string }> = ({ fieldId, value, onChange, error }) => {
@@ -93,10 +94,7 @@ const SignaturePad: React.FC<{ fieldId: string; value: string; onChange: (val: s
   );
 };
 
-const API_BASE_URLS = [
-  'https://esign-admin.signmary.com',
-  'https://mypowerly.com/v1',
-];
+const API_BASE_URLS = [API_BASE_URL];
 
 const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -134,7 +132,7 @@ const FormRenderer: React.FC<{ config: any }> = ({ config }) => {
     for (const base of API_BASE_URLS) {
       try {
         const res = await fetch(
-          `${base}/api/widgets/form-widgets/${config.id}/submit/`,
+          `${base}/widgets/form-widgets/${config.id}/submit/`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }
         );
         if (!res.ok) throw new Error('Submission failed');

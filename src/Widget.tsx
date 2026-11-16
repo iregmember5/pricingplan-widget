@@ -5,6 +5,7 @@ import NewPricingTemplatePreview, { normalizeTemplateDoc } from './previews/NewP
 import { PaymentFlow } from './PaymentFlow';
 import { ManualInvoiceFlow } from './ManualInvoiceFlow';
 import { MOCK_NEW_PRICING_WIDGET } from './mockNewPricingWidget';
+import { API_BASE_URL } from './apiConfig';
 
 const MOCK_NEW_PRICING_ID = 'mock-new-pricing';
 const NEW_PRICING_TYPES = new Set([
@@ -78,6 +79,10 @@ function isObject(value: any): value is Record<string, any> {
 
 type CheckoutPlan = {
   planId: string;
+  planName?: string;
+  planFeatures?: string[];
+  billingText?: string;
+  savingsText?: string;
   buttonText: string;
   paymentType?: string;
   interval?: string;
@@ -154,13 +159,40 @@ function collectCheckoutPlans(doc: any) {
     return undefined;
   };
 
+  const getPlanFeatures = (entry: any): string[] => {
+    const raw = entry?.features ?? entry?.included_features ?? entry?.includedFeatures;
+    const clean = (features: string[]) => features
+      .map((feature) => feature.trim().replace(/^everything in .*?plus:\s*/i, '').trim())
+      .filter((feature) => feature && !/^(includes?:?)$/i.test(feature) && !/^billed annually/i.test(feature) && !/save\s+\$?\d/i.test(feature))
+      .slice(0, 3);
+    if (Array.isArray(raw)) return clean(raw.map((feature) => typeof feature === 'string' ? feature : feature?.text || feature?.label || '').filter(Boolean));
+    if (typeof raw === 'string') return clean(raw.split(/\r?\n/));
+    return [];
+  };
+  const getBillingCopy = (entry: any) => {
+    const explicitBilling = `${entry?.billingText || entry?.billing_text || entry?.billing_period || ''}`.trim();
+    const rawFeatures = entry?.features ?? entry?.included_features ?? entry?.includedFeatures;
+    const featureLines = Array.isArray(rawFeatures) ? rawFeatures.map((feature) => typeof feature === 'string' ? feature : feature?.text || feature?.label || '') : typeof rawFeatures === 'string' ? rawFeatures.split(/\r?\n/) : [];
+    const savingsSource = `${entry?.savingsText || entry?.savings_text || featureLines.find((feature) => /save\s+\$?\d/i.test(feature)) || ''}`.trim();
+    const savingsAmount = savingsSource.match(/save\s+(\$?\s?[\d,.]+)/i)?.[1]?.replace(/\s/g, '');
+    const savings = savingsAmount ? `Save ${savingsAmount} with annual billing` : savingsSource;
+    const interval = `${entry?.interval || docInterval || ''}`.trim().toLowerCase();
+    const billingHint = featureLines.find((feature) => /billed annually|annual billing/i.test(feature));
+    const billing = explicitBilling || (billingHint ? 'Billed annually' : interval ? `Billed ${interval === 'year' ? 'annually' : interval === 'month' ? 'monthly' : interval}` : 'One-time payment');
+    return { billingText: billing, savingsText: savings };
+  };
+
   const pushPlan = (entry: any) => {
     if (!isObject(entry)) return;
     const planId = `${entry.planId || entry.plan_id || entry.id || ''}`.trim();
     if (!planId || seen.has(planId)) return;
     seen.add(planId);
+    const billingCopy = getBillingCopy(entry);
     plans.push({
       planId,
+      planName: `${entry.name || entry.plan_name || entry.title || ''}`.trim(),
+      planFeatures: getPlanFeatures(entry),
+      ...billingCopy,
       buttonText: `${entry.buttonText || entry.button_text || entry.text || ''}`.trim(),
       paymentType: `${entry.paymentType || entry.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
       interval: `${entry.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
@@ -197,8 +229,12 @@ function collectCheckoutPlans(doc: any) {
     let activePlan = inheritedPlan;
 
     if (node.type === 'photo-card' && (node.planId || node.id)) {
+      const billingCopy = getBillingCopy(node);
       activePlan = {
         planId: `${node.planId || node.id}`.trim(),
+        planName: `${node.planName || node.plan_name || node.title || node.name || ''}`.trim(),
+        planFeatures: getPlanFeatures(node),
+        ...billingCopy,
         priceAmount: node.priceAmount ?? node.price_amount,
         paymentType: `${node.paymentType || node.payment_type || docPaymentType || ''}`.trim().toLowerCase() || undefined,
         interval: `${node.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
@@ -213,8 +249,13 @@ function collectCheckoutPlans(doc: any) {
       const planId = `${node.planId || node.id || activePlan?.planId || ''}`.trim();
       if (planId && !seen.has(planId)) {
         seen.add(planId);
+        const billingCopy = getBillingCopy(node);
         plans.push({
           planId,
+          planName: `${node.planName || node.plan_name || node.title || activePlan?.planName || ''}`.trim(),
+          planFeatures: getPlanFeatures(node).length ? getPlanFeatures(node) : (activePlan?.planFeatures || []),
+          billingText: billingCopy.billingText || activePlan?.billingText,
+          savingsText: billingCopy.savingsText || activePlan?.savingsText,
           buttonText: `${node.text || node.buttonText || ''}`.trim(),
           paymentType: `${node.paymentType || node.payment_type || activePlan?.paymentType || docPaymentType || ''}`.trim().toLowerCase() || undefined,
           interval: `${node.interval || activePlan?.interval || docInterval || ''}`.trim().toLowerCase() || undefined,
@@ -286,7 +327,7 @@ function shouldUseNewWidgetPayment(doc: any, plans: Array<{ planId: string }>) {
   if (buttonAction === 'payment_link') return false;
   if (buttonAction === 'manual_invoice') return false;
   if (buttonAction === 'payment') return true;
-  
+
   // If payment_type is set (one_time or subscription), enable payment
   if (paymentType === 'one_time' || paymentType === 'subscription') return true;
 
@@ -372,24 +413,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
   const [showManualInvoice, setShowManualInvoice] = useState(false);
   const [invoicePlan, setInvoicePlan] = useState<{ planId: string; planName: string; price?: string; currency?: string } | null>(null);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [paymentTransactionId, setPaymentTransactionId] = useState<string>('');
   const newPreviewRootRef = useRef<HTMLDivElement | null>(null);
-
-  // Check for PayPal/Lemon Squeezy return
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    const paymentSuccess = urlParams.get('payment_success');
-    const transactionId = urlParams.get('transaction_id');
-    
-    if (paymentSuccess === 'true' && transactionId) {
-      setPaymentSuccess(true);
-      setPaymentTransactionId(transactionId);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
 
   const newWidgetPlans = useMemo(() => {
     if (!content?.data || !NEW_PRICING_TYPES.has(content?.type)) return [];
@@ -420,13 +444,11 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     }
 
     const publicTemplateUrls = [
-      `https://esign-admin.signmary.com/api/widgets/new-pricing-widget/public/${widgetId}/`,
-      `https://mypowerly.com/v1/api/widgets/new-pricing-widget/public/${widgetId}/`,
+      `${API_BASE_URL}/widgets/new-pricing-widget/public/${widgetId}/`,
     ];
 
     const legacyWidgetUrls = [
-      `https://esign-admin.signmary.com/api/widgets/widget-data/public/${widgetId}/`,
-      `https://mypowerly.com/v1/api/widgets/widget-data/public/${widgetId}/`,
+      `${API_BASE_URL}/widgets/widget-data/public/${widgetId}/`,
     ];
 
     const tryJsonFetch = async (url: string) => {
@@ -625,6 +647,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       const matchedPlan = newWidgetPlans.find(p => p.planId === explicitPlanId);
       setSelectedPlan({
         planId: explicitPlanId,
+        planName: matchedPlan?.planName || matchedPlan?.buttonText || '',
+        planFeatures: matchedPlan?.planFeatures || [],
+        billingText: matchedPlan?.billingText,
+        savingsText: matchedPlan?.savingsText,
         buttonText: matchedPlan?.buttonText || `${clickedButton.textContent || ''}`.trim(),
         paymentType: explicitPaymentType || matchedPlan?.paymentType || 'one_time',
         interval: explicitInterval || matchedPlan?.interval || undefined,
@@ -650,6 +676,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
     setSelectedPlan({
       planId: fallbackPlan.planId,
+      planName: fallbackPlan.planName || fallbackPlan.buttonText || '',
+      planFeatures: fallbackPlan.planFeatures || [],
+      billingText: fallbackPlan.billingText,
+      savingsText: fallbackPlan.savingsText,
       buttonText: fallbackPlan.buttonText,
       paymentType: fallbackPlan.paymentType || 'one_time',
       interval: fallbackPlan.interval,
@@ -690,44 +720,6 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
     );
   }
 
-  // Show success screen if returning from PayPal/Lemon Squeezy
-  if (paymentSuccess) {
-    return (
-      <div style={{ maxWidth: '400px', margin: '0 auto', padding: '40px 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: '64px', marginBottom: '20px' }}>✅</div>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '12px', color: '#10b981' }}>
-          Payment Successful!
-        </h2>
-        <p style={{ color: '#6b7280', marginBottom: '20px' }}>
-          Your payment has been processed successfully.
-        </p>
-        {paymentTransactionId && (
-          <p style={{ fontSize: '14px', color: '#9ca3af' }}>
-            Transaction ID: {paymentTransactionId}
-          </p>
-        )}
-        <button
-          onClick={() => {
-            setPaymentSuccess(false);
-            setPaymentTransactionId('');
-          }}
-          style={{
-            marginTop: '30px',
-            padding: '12px 24px',
-            background: '#7c3aed',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: '500'
-          }}
-        >
-          Back to Plans
-        </button>
-      </div>
-    );
-  }
-
   if (
     NEW_PRICING_TYPES.has(content.type)
     && showManualInvoice
@@ -763,16 +755,16 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       <PaymentFlow
         widgetId={actualWidgetId}
         widgetIds={routerWidgetIds}
+        widgetKind="new"
         planId={selectedPlan.planId}
-        paymentType={selectedPlan.paymentType || 'one_time'}
-        interval={selectedPlan.paymentType === 'subscription' ? selectedPlan.interval : undefined}
-        amount={selectedPlan.price || '0.00'}
+        planName={selectedPlan.planName}
+        planFeatures={selectedPlan.planFeatures}
+        billingText={selectedPlan.billingText}
+        savingsText={selectedPlan.savingsText}
+        amount={selectedPlan.price}
         currency={selectedPlan.currency || normalizeCurrencyCode(content.data?.currency || content.data?.globalCurrency)}
-        targetGateway={selectedPlan.paymentGateway || getDocPaymentGateway(content.data)}
-        trialDays={selectedPlan.trialDays}
-        prorationBehavior={selectedPlan.prorationBehavior}
-        useNewPaymentApi
-        paymentMethod={content.data?.payment_method === 'stripe_direct' ? 'stripe_direct' : 'vault'}
+        supportEmail={content.data?.support_email || content.data?.supportEmail}
+        paymentType={selectedPlan.paymentType || 'one_time'}
         onBack={() => {
           setShowPaymentFlow(false);
           setSelectedPlan(null);
