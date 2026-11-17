@@ -15,12 +15,25 @@ export interface WidgetCheckoutIdentity {
 export interface WidgetCollectionConfig {
   provider: string;
   payment_method?: string;
+  environment?: string;
   publishable_key?: string;
   stripe_account?: string | null;
   gateway?: string;
   flow?: string;
   begin_endpoint?: string;
   saving?: string;
+}
+
+export interface WidgetPaymentStatus {
+  status?: string;
+  transaction_id?: string | number | null;
+  gateway_tx_id?: string | null;
+  settlement_status?: string;
+  receipt_available?: boolean;
+  can_start_replacement?: boolean;
+  payment_method?: string;
+  amount?: string;
+  currency?: string;
 }
 
 export interface WidgetCheckoutSession {
@@ -43,6 +56,7 @@ export interface WidgetCheckoutSession {
   attemptId: string | null;
   nextAction: Record<string, any> | null;
   collection: WidgetCollectionConfig | null;
+  payment: WidgetPaymentStatus | null;
 }
 
 const STORAGE_PREFIX = 'payora.widget-checkout.v1';
@@ -98,6 +112,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     attemptId: typeof row?.attempt_id === 'string' ? row.attempt_id : null,
     nextAction: row?.next_action && typeof row.next_action === 'object' ? row.next_action : null,
     collection: row?.collection && typeof row.collection === 'object' ? row.collection : null,
+    payment: row?.payment && typeof row.payment === 'object' ? row.payment : null,
   };
 
   if (!session.checkoutId || !session.purchaseId || !session.widgetId || !session.planId

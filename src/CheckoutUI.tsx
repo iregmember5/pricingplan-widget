@@ -122,6 +122,8 @@ export function CheckoutUnavailableModal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const errorCode = message.match(/\b(5\d\d|4\d\d)\b/)?.[1] || '503';
+  const inactiveCardSetup = !paymentMayHaveBeenSubmitted && /card collection is no longer active|collection.*(?:expired|inactive|revoked)/i.test(message);
+  const title = inactiveCardSetup ? 'Secure card setup needs refreshing' : 'We couldn’t start checkout';
   const safePlanName = planName?.trim() || 'Selected plan';
   const mailSubject = `Checkout support: ${safePlanName} (Error ${errorCode})`;
   const mailBody = `Please help me with checkout for ${safePlanName}. Error code: ${errorCode}. I have not included any card details.`;
@@ -175,9 +177,11 @@ export function CheckoutUnavailableModal({
       <section ref={dialogRef} className="payora-checkout-modal" role="alertdialog" aria-modal="true" aria-labelledby="checkout-unavailable-title" aria-describedby="checkout-unavailable-message">
         <button className="payora-checkout-modal__close" type="button" onClick={onClose} aria-label="Close message"><X size={19} /></button>
         <div className="payora-checkout-modal__icon"><AlertCircle size={24} /></div>
-        <h2 id="checkout-unavailable-title">We couldn’t start checkout</h2>
+        <h2 id="checkout-unavailable-title">{title}</h2>
         <p id="checkout-unavailable-message">
-          {paymentMayHaveBeenSubmitted
+          {inactiveCardSetup
+            ? <><strong>No payment was submitted.</strong><br />This secure card session is no longer active. Refresh its status before entering another card.</>
+            : paymentMayHaveBeenSubmitted
             ? 'We couldn’t confirm your payment. Check its status before trying again.'
             : failedRetries >= 2
               ? <><strong>You haven’t been charged.</strong><br />Please contact support to continue.</>
@@ -186,7 +190,7 @@ export function CheckoutUnavailableModal({
         <div className="payora-checkout-modal__actions">
           <a className="payora-checkout-modal__secondary" href={supportHref}>Contact support</a>
           <button ref={retryRef} type="button" className="payora-checkout-modal__retry" onClick={onRetry} disabled={loading}>
-            {loading ? <><span className="payora-checkout__spinner" /> Retrying…</> : <><RefreshCw size={15} /> Try again</>}
+            {loading ? <><span className="payora-checkout__spinner" /> Checking…</> : <><RefreshCw size={15} /> {inactiveCardSetup ? 'Refresh status' : 'Try again'}</>}
           </button>
         </div>
         <div className="payora-checkout-modal__code">Error code: {errorCode}</div>
@@ -212,11 +216,13 @@ type OrderSummaryProps = {
   taxAmount?: string;
   discountAmount?: string;
   onApplyPromo?: (code: string) => void;
+  processorLabel?: string;
 };
 
 export function OrderSummary({
   planName, amount, planAmount, unitAmount, currency = 'USD', quantity = 1, features = [], billingText, savingsText, supportEmail,
   onChangePlan, priceError, onRetryPrice, taxAmount, discountAmount, onApplyPromo,
+  processorLabel = 'Stripe',
 }: OrderSummaryProps) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState('');
@@ -280,7 +286,7 @@ export function OrderSummary({
           {!onApplyPromo && <span>Promo codes are not available for this offer.</span>}
         </form>}
       </div>
-      <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by Stripe</div>
+      <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by {processorLabel}</div>
       </div>
     </aside>
   );

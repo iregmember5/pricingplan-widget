@@ -12,6 +12,8 @@ import {
   type WidgetKind,
 } from './widgetCheckoutService';
 import { VaultCollectionFlow } from './VaultCollectionFlow';
+import { CpachargeAchFlow } from './CpachargeAchFlow';
+import { supportsCpachargeAch } from './cpachargeAchService';
 
 interface PaymentFlowProps {
   widgetId: string;
@@ -43,6 +45,10 @@ function hasStripeCollection(session: WidgetCheckoutSession) {
 function hasVaultCollectionFlow(session: WidgetCheckoutSession) {
   return session.collection?.flow === 'vault_to_stripe'
     && session.collection.provider === 'vgs';
+}
+
+function hasCpachargeAchFlow(session: WidgetCheckoutSession) {
+  return supportsCpachargeAch(session);
 }
 
 function canStartStripePayment(session: WidgetCheckoutSession) {
@@ -82,7 +88,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   paymentType = 'one_time',
   onBack,
 }) => {
-  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'status' | 'success'>('methods');
+  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success'>('methods');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -99,7 +105,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const continuePriceLabel = displayPlanPrice ? `${displayPlanPrice}${billingText ? ` · ${billingText}` : ''}` : '';
   const serviceUnavailable = /temporarily unavailable|HTTP 503/i.test(error);
   const paymentMayHaveBeenSubmitted = Boolean(checkout && (
-    checkout.attemptId || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)
+    checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)
   ));
 
   useEffect(() => {
@@ -120,7 +126,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setPriceTimedOut(false);
     setUnavailableModalOpen(false);
 
-    if (session.status === 'succeeded') {
+    if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session) || session.payment?.receipt_available === true)) {
       setConfirmedReference(session.attemptId || session.purchaseId);
       setStep('success');
       return;
@@ -128,7 +134,18 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
     if (session.status !== 'ready') {
       setBlockedReason('');
-      setStep(hasVaultCollectionFlow(session) ? 'vault' : hasStripeCollection(session) ? 'stripe' : 'status');
+      setStep(hasCpachargeAchFlow(session) ? 'ach' : hasVaultCollectionFlow(session) ? 'vault' : hasStripeCollection(session) ? 'stripe' : 'status');
+      return;
+    }
+
+    if (hasCpachargeAchFlow(session)) {
+      if (!session.canSubmit || !session.purchaseToken || !session.idempotencyKey) {
+        setBlockedReason('This checkout is not authorized for bank payment. No debit was submitted. Contact the merchant.');
+        setStep('status');
+        return;
+      }
+      setBlockedReason('');
+      setStep('ach');
       return;
     }
 
@@ -145,7 +162,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
     if (!canStartStripePayment(session)) {
       setBlockedReason(session.canSubmit
-        ? 'Secure Stripe card collection is not configured for this checkout. No payment was submitted. Contact the merchant.'
+        ? 'A supported payment method is not configured for this checkout. No payment was submitted. Contact the merchant.'
         : statusMessage(session.status));
       setStep('status');
       return;
@@ -157,8 +174,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
   const beginCheckout = async () => {
     if (starting.current || loading) return;
-    if (!['one_time', 'payment'].includes(paymentType.trim().toLowerCase())) {
-      setError('This checkout currently supports one-time card payments only.');
+    if (!['one_time', 'payment', 'ach'].includes(paymentType.trim().toLowerCase())) {
+      setError('This checkout currently supports one-time payments only.');
       return;
     }
     if (!widgetId?.trim() || !planId?.trim()) {
@@ -203,9 +220,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       const updated = await getWidgetCheckoutStatus(identity);
       setUnavailableModalOpen(false);
       setCheckout(updated);
-      if (updated.status === 'succeeded') {
+      if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
         setConfirmedReference(updated.attemptId || updated.purchaseId);
         setStep('success');
+      } else if (hasCpachargeAchFlow(updated)) {
+        setBlockedReason('');
+        setStep('ach');
       } else if (hasVaultCollectionFlow(updated)) {
         setBlockedReason('');
         setStep('vault');
@@ -221,7 +241,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       } else {
         setBlockedReason(updated.status === 'ready' && !updated.canSubmit
           ? statusMessage(updated.status)
-          : 'Secure Stripe card collection is not configured for this checkout. No payment was submitted. Contact the merchant.');
+          : 'A supported payment method is not configured for this checkout. No payment was submitted. Contact the merchant.');
       }
     } catch (err: any) {
       const message = err?.message || 'We could not confirm the original checkout status. Do not create another checkout.';
@@ -277,6 +297,27 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           setStep('success');
         }}
         onCheckoutUpdate={setCheckout}
+        onBack={() => setStep('methods')}
+        onChangePlan={onBack}
+      />
+    );
+  }
+
+  if (checkout && identity && step === 'ach') {
+    return (
+      <CpachargeAchFlow
+        identity={identity}
+        checkout={checkout}
+        planFeatures={planFeatures}
+        billingText={billingText}
+        savingsText={savingsText}
+        supportEmail={supportEmail}
+        onCheckoutUpdate={setCheckout}
+        onSuccess={(reference, updatedCheckout) => {
+          setCheckout(updatedCheckout);
+          setConfirmedReference(reference);
+          setStep('success');
+        }}
         onBack={() => setStep('methods')}
         onChangePlan={onBack}
       />

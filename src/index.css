@@ -650,3 +650,43 @@ html, body {
   .payora-checkout__summary-content .payora-checkout__line-items::after { background: #203652; }
   .payora-card-preview { min-height: 145px; padding: 16px; }
 }
+
+.payora-ach__form { display: grid; gap: 18px; margin-top: 20px; }
+.payora-ach__group { display: grid; gap: 14px; }
+.payora-ach__group h2 { color: #1b2e4a; font-size: 17px; font-weight: 700; }
+.payora-ach__field { display: grid; min-width: 0; gap: 7px; }
+.payora-ach__field label,
+.payora-ach__row legend { color: #293950; font-size: 14px; font-weight: 650; }
+.payora-ach__field input,
+.payora-ach__hosted-field { width: 100%; min-width: 0; height: 50px; padding: 0 13px; color: #17243a; background: #fff; border: 1px solid #cbd7e5; border-radius: 10px; font: inherit; font-size: 16px; }
+.payora-ach__field input:focus,
+.payora-ach__hosted-field:focus-within { border-color: #527cae; outline: 3px solid rgb(66 111 170 / 16%); outline-offset: 1px; }
+.payora-ach__hosted-field { padding: 0; overflow: hidden; }
+.payora-ach__hosted-field iframe { display: block; width: 100% !important; height: 48px !important; border: 0; }
+.payora-ach__row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.payora-ach__row fieldset { display: flex; flex-wrap: wrap; gap: 8px 15px; min-width: 0; padding: 12px; border: 1px solid #dbe3ed; border-radius: 10px; }
+.payora-ach__row legend { padding: 0 4px; }
+.payora-ach__choice { display: inline-flex; align-items: center; gap: 7px; min-height: 24px; color: #35455c; font-size: 14px; cursor: pointer; }
+.payora-ach__choice input,
+.payora-ach__consent input { width: 17px; height: 17px; accent-color: #24456c; }
+.payora-ach__secure-note { display: flex; align-items: flex-start; gap: 8px; color: #52647b; font-size: 13px; line-height: 1.5; }
+.payora-ach__secure-note svg { flex: none; color: #32775e; }
+.payora-ach__authorization { padding: 16px; color: #33455e; background: #f4f7fb; border: 1px solid #dbe4ef; border-radius: 12px; }
+.payora-ach__authorization-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #1c3556; font-size: 14px; font-weight: 700; }
+.payora-ach__authorization > p { color: #35465d; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.payora-ach__authorization-total { display: flex; justify-content: space-between; gap: 12px; margin-top: 13px; padding-top: 12px; color: #34465f; border-top: 1px solid #d9e2ec; font-size: 14px; }
+.payora-ach__authorization-total strong { color: #172d4c; font-size: 16px; }
+.payora-ach__consent { display: flex; align-items: flex-start; gap: 10px; color: #293950; font-size: 14px; line-height: 1.55; cursor: pointer; }
+.payora-ach__consent input { flex: none; margin-top: 2px; }
+.payora-ach__disclaimer { color: #52647b; font-size: 13px; line-height: 1.5; }
+.payora-ach__loading { display: flex; align-items: center; gap: 10px; padding: 16px; color: #344b68; background: #f6f8fb; border: 1px solid #dce5f0; border-radius: 12px; font-size: 14px; }
+.payora-ach__loading .payora-checkout__spinner { border-color: rgb(36 69 108 / 25%); border-top-color: #24456c; }
+.payora-ach__status { display: flex; align-items: flex-start; gap: 13px; margin-top: 22px; padding: 17px; color: #31445f; background: #f1f5fa; border: 1px solid #dbe5f0; border-radius: 12px; }
+.payora-ach__status-icon { display: grid; width: 36px; height: 36px; flex: none; place-items: center; color: #24456c; background: #e3ebf5; border-radius: 10px; }
+.payora-ach__status strong { color: #1d3556; font-size: 15px; }
+.payora-ach__status p { margin-top: 5px; color: #43566f; font-size: 14px; line-height: 1.6; }
+@media (max-width: 560px) {
+  .payora-ach__row { grid-template-columns: 1fr; }
+  .payora-ach__row fieldset { padding: 10px; }
+  .payora-ach__authorization { padding: 13px; }
+}
