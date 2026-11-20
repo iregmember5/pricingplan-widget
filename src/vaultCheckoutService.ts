@@ -155,7 +155,7 @@ export function getPurchaseProof(checkout: WidgetCheckoutSession): PurchaseProof
 
 export async function beginVaultCollection(checkout: WidgetCheckoutSession): Promise<VaultCollection> {
   const configured = checkout.collection;
-  if (configured?.flow !== 'vault_to_stripe' || configured.provider !== 'vgs' || checkout.canSubmit !== true) {
+  if (configured?.flow !== 'vault_to_stripe' || !(configured.provider === 'vgs' || (configured.provider === 'basis_theory' && configured.environment === 'sandbox')) || checkout.canSubmit !== true) {
     throw new Error('Secure card collection is not available for this checkout. No payment was submitted.');
   }
   const data = await postApi<any>('vault-collections/', getPurchaseProof(checkout));
@@ -172,7 +172,7 @@ export async function getVaultCollectionStatus(
 ): Promise<VaultCollection> {
   const data = await postApi<any>(`vault-collections/${encodeURIComponent(collectionId)}/status/`, getPurchaseProof(checkout));
   const collection = normalizeCollection(data);
-  if (collection.collection_id !== collectionId || collection.purchase_id !== checkout.purchaseId) {
+  if (collection.collection_id !== collectionId || collection.purchase_id !== checkout.purchaseId || collection.provider !== checkout.collection?.provider) {
     throw new Error('The card preparation status does not match this checkout.');
   }
   return collection;
@@ -189,7 +189,7 @@ export async function completeVaultCollection(
     provider_token: providerToken,
   });
   const collection = normalizeCollection(data);
-  if (collection.collection_id !== collectionId || collection.purchase_id !== checkout.purchaseId) {
+  if (collection.collection_id !== collectionId || collection.purchase_id !== checkout.purchaseId || collection.provider !== checkout.collection?.provider) {
     throw new Error('Card preparation completion does not match this checkout.');
   }
   return collection;
@@ -199,7 +199,7 @@ export async function requestNewVaultCard(
   collectionId: string,
   checkout: WidgetCheckoutSession,
 ): Promise<VaultCollection> {
-  if (checkout.collection?.provider !== 'vgs') {
+  if (checkout.collection?.provider !== 'vgs' && !(checkout.collection?.provider === 'basis_theory' && checkout.collection.environment === 'sandbox')) {
     throw new Error('This provider is not enabled for card replacement in the current checkout.');
   }
   const data = await postApi<any>(`vault-collections/${encodeURIComponent(collectionId)}/new-card/`, getPurchaseProof(checkout));
@@ -214,8 +214,8 @@ export async function submitVaultPayment(checkout: WidgetCheckoutSession, collec
   if (!checkout.canSubmit || !checkout.purchaseToken || !checkout.idempotencyKey) {
     throw new Error('This checkout is not authorized to submit payment. Recover its current status first.');
   }
-  if (checkout.collection?.flow !== 'vault_to_stripe' || checkout.collection.provider !== 'vgs'
-    || collection.provider !== 'vgs' || !collection.can_pay || collection.state !== 'ready'
+  if (checkout.collection?.flow !== 'vault_to_stripe' || !(checkout.collection.provider === 'vgs' || (checkout.collection.provider === 'basis_theory' && checkout.collection.environment === 'sandbox'))
+    || collection.provider !== checkout.collection.provider || !collection.can_pay || collection.state !== 'ready'
     || collection.purchase_id !== checkout.purchaseId) {
     throw new Error('Secure card preparation is not ready to pay.');
   }

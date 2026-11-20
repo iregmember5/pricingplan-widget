@@ -3,6 +3,7 @@ import { ArrowLeft, CheckCircle2, CreditCard, ExternalLink, LockKeyhole, ShieldC
 import { CardPreview, CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import {
   beginVaultCollection,
+  completeVaultCollection,
   clearVgsSubmissionStarted,
   getVaultCollectionStatus,
   hasVgsSubmissionStarted,
@@ -15,6 +16,8 @@ import {
 } from './vaultCheckoutService';
 import { getWidgetCheckoutStatus, type WidgetCheckoutIdentity, type WidgetCheckoutSession } from './widgetCheckoutService';
 import { VgsHostedFields } from './VgsHostedFields';
+import { BasisTheoryHostedFields } from './BasisTheoryHostedFields';
+import { readBasisRecovery, saveBasisRecovery } from './basisTheoryRecovery';
 
 type Props = {
   identity: WidgetCheckoutIdentity;
@@ -46,6 +49,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
   const [charge, setCharge] = useState<VaultChargeResult | null>(null);
   const [chargeRequested, setChargeRequested] = useState(false);
   const [vgsSubmissionStarted, setVgsSubmissionStarted] = useState(false);
+  const [basisSubmissionStarted, setBasisSubmissionStarted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [unavailableOpen, setUnavailableOpen] = useState(false);
@@ -85,7 +89,24 @@ export const VaultCollectionFlow: React.FC<Props> = ({
       return;
     }
     if (!collection) {
-      const current = await beginVaultCollection(checkout);
+      let current: VaultCollection;
+      if (provider === 'basis_theory') {
+        if (!navigator.locks?.request) throw new Error('Secure checkout recovery is not available in this browser.');
+        current = await navigator.locks.request(`payora-basis-begin:${checkout.purchaseId}`, async () => {
+          const saved = readBasisRecovery(localStorage, checkout.purchaseId);
+          if (saved) {
+            if (saved.collectionId === 'pending') throw new Error('Card preparation could not be confirmed. Contact support to recover this checkout.');
+            setBasisSubmissionStarted(saved.tokenizationStarted);
+            return getVaultCollectionStatus(saved.collectionId, checkout);
+          }
+          saveBasisRecovery(localStorage, checkout.purchaseId, { collectionId: 'pending', tokenizationStarted: true });
+          const started = await beginVaultCollection(checkout);
+          saveBasisRecovery(localStorage, checkout.purchaseId, { collectionId: started.collection_id, tokenizationStarted: false });
+          return started;
+        });
+      } else {
+        current = await beginVaultCollection(checkout);
+      }
       setCollection(current);
       if (current.provider === 'vgs') {
         const previousSubmit = hasVgsSubmissionStarted(checkout.purchaseId, current.collection_id);
@@ -96,7 +117,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
     }
     const current = await getVaultCollectionStatus(collection.collection_id, checkout);
     setCollection(current);
-    if (current.state === 'ready') clearVgsSubmissionStarted(checkout.purchaseId, current.collection_id);
+    if (current.state === 'ready' && current.provider === 'vgs') clearVgsSubmissionStarted(checkout.purchaseId, current.collection_id);
   });
 
   useEffect(() => {
@@ -121,7 +142,22 @@ export const VaultCollectionFlow: React.FC<Props> = ({
 
   const changeCard = () => run(async () => {
     if (!collection?.can_enter_new_card || chargeRequested || charge?.attempt_id || checkout.attemptId) throw new Error('A new card cannot be requested after payment submission. Check the original payment status.');
-    const replacement = await requestNewVaultCard(collection.collection_id, checkout);
+    let replacement: VaultCollection;
+    if (collection.provider === 'basis_theory') {
+      if (!navigator.locks?.request) throw new Error('Secure checkout recovery is not available in this browser.');
+      replacement = await navigator.locks.request(`payora-basis-tokenize:${collection.collection_id}`, { ifAvailable: true }, async lock => {
+        if (!lock) throw new Error('Card preparation is still in progress. Check its status.');
+        const saved = readBasisRecovery(localStorage, checkout.purchaseId);
+        if (!saved || saved.collectionId !== collection.collection_id) throw new Error('Card preparation has changed. Recover the original checkout.');
+        saveBasisRecovery(localStorage, checkout.purchaseId, { collectionId: 'pending', tokenizationStarted: true });
+        const next = await requestNewVaultCard(collection.collection_id, checkout);
+        saveBasisRecovery(localStorage, checkout.purchaseId, { collectionId: next.collection_id, tokenizationStarted: false });
+        return next;
+      });
+      setBasisSubmissionStarted(false);
+    } else {
+      replacement = await requestNewVaultCard(collection.collection_id, checkout);
+    }
     if (collection.provider === 'vgs') clearVgsSubmissionStarted(checkout.purchaseId, collection.collection_id);
     setCardPreview({ brand: '', last4: '' });
     setCollection(replacement);
@@ -147,7 +183,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
   const redirectUrl = safeStripeRedirect(charge?.next_action || checkout.nextAction);
   const hasAttempt = Boolean(chargeRequested || charge?.attempt_id || checkout.attemptId || checkout.status !== 'ready');
   const canShowCardAction = Boolean(collection?.state === 'ready' && collection.can_pay && !hasAttempt);
-  const needsSdk = Boolean((provider === 'basis_theory' || provider === 'spreedly') && collection?.state === 'collecting');
+  const needsSdk = Boolean(provider === 'spreedly' && collection?.state === 'collecting');
 
   return (
     <div className="payora-checkout payora-checkout--payment">
@@ -199,6 +235,33 @@ export const VaultCollectionFlow: React.FC<Props> = ({
               </div>
             )}
 
+            {!hasAttempt && collection?.state === 'collecting' && provider === 'basis_theory' && !basisSubmissionStarted && (
+              <div className="payora-vault__provider-box">
+                <div className="payora-vault__provider-heading"><ShieldCheck size={17} /> Secure card entry</div>
+                <BasisTheoryHostedFields
+                  collection={collection}
+                  disabled={busy}
+                  onTokenizationStart={() => {
+                    try {
+                      const saved = readBasisRecovery(localStorage, checkout.purchaseId);
+                      if (!saved || saved.collectionId !== collection.collection_id || saved.tokenizationStarted) return false;
+                      saveBasisRecovery(localStorage, checkout.purchaseId, { collectionId: collection.collection_id, tokenizationStarted: true });
+                      return true;
+                    } catch { return false; }
+                  }}
+                  onTokenCreated={async tokenId => {
+                    const current = await completeVaultCollection(collection.collection_id, checkout, tokenId);
+                    setBasisSubmissionStarted(true);
+                    setCollection(current);
+                  }}
+                  onUncertain={() => { setBasisSubmissionStarted(true); void refreshCollection(); }}
+                />
+              </div>
+            )}
+            {!hasAttempt && collection?.state === 'collecting' && provider === 'basis_theory' && basisSubmissionStarted && (
+              <div className="payora-vault__state" role="status">Card preparation was started. Check its status before entering another card.</div>
+            )}
+
             {!hasAttempt && collection?.state === 'ready' && provider === 'vgs' && (
               <CardPreview brand={cardPreview.brand} last4={cardPreview.last4} />
             )}
@@ -226,8 +289,8 @@ export const VaultCollectionFlow: React.FC<Props> = ({
 
             <div className="payora-vault__actions">
               {canShowCardAction && <button className="payora-checkout__button" type="button" onClick={pay} disabled={busy}>{busy ? <><span className="payora-checkout__spinner" /> Processing…</> : <><LockKeyhole size={16} /> Pay {formatCheckoutAmount(checkout.amount, checkout.currency)}</>}</button>}
-              {!hasAttempt && !canShowCardAction && collection?.can_enter_new_card && (collection.state !== 'collecting' || vgsSubmissionStarted) && <button className="payora-checkout__text-button" type="button" onClick={changeCard} disabled={busy}>Enter another card</button>}
-              {(hasAttempt || collection?.state === 'uncertain' || vgsSubmissionStarted || Boolean(error)) && <button className="payora-checkout__text-button payora-checkout__refresh-link" type="button" onClick={refreshCollection} disabled={busy}>{busy ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}</button>}
+              {!hasAttempt && !canShowCardAction && collection?.can_enter_new_card && (collection.state !== 'collecting' || vgsSubmissionStarted || basisSubmissionStarted) && <button className="payora-checkout__text-button" type="button" onClick={changeCard} disabled={busy}>Enter another card</button>}
+              {(hasAttempt || collection?.state === 'uncertain' || vgsSubmissionStarted || basisSubmissionStarted || Boolean(error)) && <button className="payora-checkout__text-button payora-checkout__refresh-link" type="button" onClick={refreshCollection} disabled={busy}>{busy ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}</button>}
             </div>
             <div className="payora-checkout__card-assurance"><ShieldCheck size={15} /> Card details are encrypted in secure fields and never reach our payment servers.</div>
             <SupportId value={checkout.purchaseId} />

@@ -42,7 +42,7 @@ function hasStripeCollection(session: WidgetCheckoutSession) {
 
 function hasVaultCollectionFlow(session: WidgetCheckoutSession) {
   return session.collection?.flow === 'vault_to_stripe'
-    && session.collection.provider === 'vgs';
+    && (session.collection.provider === 'vgs' || (session.collection.provider === 'basis_theory' && session.collection.environment === 'sandbox'));
 }
 
 function canStartStripePayment(session: WidgetCheckoutSession) {

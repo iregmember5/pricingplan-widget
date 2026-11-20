@@ -15,6 +15,7 @@ export interface WidgetCheckoutIdentity {
 export interface WidgetCollectionConfig {
   provider: string;
   payment_method?: string;
+  environment?: string;
   publishable_key?: string;
   stripe_account?: string | null;
   gateway?: string;
