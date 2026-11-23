@@ -469,16 +469,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
             if (hasRenderableNewPricingDoc(normalizedDoc)) {
               if (cancelled) return;
+              // A successful new-pricing lookup is already authoritative. Do
+              // not probe the legacy widget-data endpoint with this pricing
+              // widget ID: it is a different model and commonly returns 404.
               const candidateIds = collectRouterWidgetIds(widgetId, result, normalizedDoc);
-              for (const legacyUrl of legacyWidgetUrls) {
-                try {
-                  const legacyResult = await tryJsonFetch(legacyUrl);
-                  candidateIds.push(...collectRouterWidgetIds(widgetId, legacyResult, legacyResult?.data, legacyResult?.data?.data));
-                  break;
-                } catch (legacyErr) {
-                  console.warn(`Legacy widget id lookup failed for ${legacyUrl}:`, legacyErr);
-                }
-              }
               const uniqueCandidateIds = Array.from(new Set(candidateIds));
               setRouterWidgetIds(uniqueCandidateIds);
               setActualWidgetId(resolveRouterWidgetId(result, widgetId));

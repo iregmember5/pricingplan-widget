@@ -43,8 +43,14 @@ function hasStripeCollection(session: WidgetCheckoutSession) {
 }
 
 function hasVaultCollectionFlow(session: WidgetCheckoutSession) {
-  return session.collection?.flow === 'vault_to_stripe'
-    && session.collection.provider === 'vgs';
+  const config = session.collection;
+  if (!config) return false;
+  const providerReady = config.provider === 'vgs'
+    || config.provider === 'basis_theory' && ['sandbox', 'live'].includes(config.environment || '');
+  if (!providerReady) return false;
+  return config.flow === 'vault_to_moov'
+    ? config.gateway === 'moov'
+    : config.flow === 'vault_to_stripe' && (config.gateway === undefined || config.gateway === 'stripe');
 }
 
 function hasCpachargeAchFlow(session: WidgetCheckoutSession) {
@@ -125,6 +131,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setError('');
     setPriceTimedOut(false);
     setUnavailableModalOpen(false);
+
+    if (session.status === 'succeeded' && session.collection?.flow === 'vault_to_moov') {
+      setBlockedReason('');
+      setStep('vault');
+      return;
+    }
 
     if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session) || session.payment?.receipt_available === true)) {
       setConfirmedReference(session.attemptId || session.purchaseId);
@@ -220,7 +232,10 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       const updated = await getWidgetCheckoutStatus(identity);
       setUnavailableModalOpen(false);
       setCheckout(updated);
-      if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
+      if (updated.status === 'succeeded' && updated.collection?.flow === 'vault_to_moov') {
+        setBlockedReason('');
+        setStep('vault');
+      } else if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
         setConfirmedReference(updated.attemptId || updated.purchaseId);
         setStep('success');
       } else if (hasCpachargeAchFlow(updated)) {
@@ -268,6 +283,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 <div><dt>Plan</dt><dd>{displayPlanName}</dd></div>
                 <div><dt>Amount confirmed</dt><dd>{formatCheckoutAmount(checkout?.amount || amount || '0.00', checkout?.currency || currency)}</dd></div>
                 {billingText && <div><dt>Billing</dt><dd>{billingText}</dd></div>}
+                {confirmedReference && <div><dt>Payment reference</dt><dd>{confirmedReference}</dd></div>}
               </dl>
               {(checkout?.purchaseId || confirmedReference) && <SupportId value={checkout?.purchaseId || confirmedReference} />}
               <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>

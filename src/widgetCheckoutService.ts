@@ -60,6 +60,16 @@ export interface WidgetCheckoutSession {
 }
 
 const STORAGE_PREFIX = 'payora.widget-checkout.v1';
+const endpointRetryAt = new Map<string, number>();
+const endpointRetryCount = new Map<string, number>();
+
+function retryAfterMs(value: string | null) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : 0;
+}
 
 function storageKey(widgetKind: WidgetKind, widgetId: string, planId: string) {
   return `${STORAGE_PREFIX}:${widgetKind}:${widgetId}:${planId}`;
@@ -145,6 +155,8 @@ export class WidgetCheckoutRequestError extends Error {
 }
 
 async function post(path: string, payload: Record<string, unknown>, expectedStatuses?: number[]) {
+  const retryAt = endpointRetryAt.get(path) || 0;
+  if (retryAt > Date.now()) await new Promise(resolve => window.setTimeout(resolve, retryAt - Date.now()));
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -155,9 +167,17 @@ async function post(path: string, payload: Record<string, unknown>, expectedStat
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 429) {
+      const count = (endpointRetryCount.get(path) || 0) + 1;
+      endpointRetryCount.set(path, count);
+      const backoff = Math.min(30000, 1000 * (2 ** Math.min(count, 5)));
+      endpointRetryAt.set(path, Date.now() + Math.max(backoff, retryAfterMs(response.headers.get('Retry-After'))));
+    }
     const message = body?.message || body?.error || `Checkout request failed (HTTP ${response.status}).`;
     throw new Error(`${message} (HTTP ${response.status})`);
   }
+  endpointRetryAt.delete(path);
+  endpointRetryCount.delete(path);
   if (expectedStatuses && !expectedStatuses.includes(response.status)) {
     throw new Error(`Checkout creation returned unexpected HTTP ${response.status}; expected 200 or 201.`);
   }
@@ -225,11 +245,21 @@ export async function getOrCreateWidgetCheckout(input: {
     persistIdentity(key, identity);
   }
 
-  // Creation is an idempotent create-or-recover operation keyed by the
-  // persisted reference and secret. Replay it before status so an identity
-  // saved before a lost creation response can be recovered (and so an
-  // acknowledged checkout is resolved to the same canonical purchase).
-  // This endpoint does not submit a payment. Never mint a new identity here.
+  if (existing) {
+    // A refresh or lost response recovers the original checkout identity. It
+    // must not issue another create request or mint replacement credentials.
+    const resumed = await resumeWidgetCheckout(existing);
+    assertCheckoutMatchesIdentity(resumed, existing);
+    const current = await getWidgetCheckoutStatus(existing);
+    assertCheckoutMatchesIdentity(current, existing);
+    if (resumed.purchaseId !== current.purchaseId) {
+      throw new Error('Checkout recovery returned different purchase references. Keep the support reference and contact the merchant.');
+    }
+    return { identity: existing, session: current, recovered: true };
+  }
+
+  // The first request creates this purchase exactly once. The identity is
+  // persisted before network I/O so later refreshes use /resume/ above.
   let createdSession: WidgetCheckoutSession;
   try {
     const creationBody = await post('/payments/widget-checkouts/', {

@@ -101,6 +101,9 @@ export function VgsHostedFields({
   onSubmitStart,
   onSubmitFinished,
   onValidationFailure,
+  payerNamesRequired = false,
+  payerFirstName = '',
+  payerLastName = '',
 }: {
   config: Record<string, any>;
   disabled?: boolean;
@@ -108,6 +111,9 @@ export function VgsHostedFields({
   onSubmitStart: () => boolean;
   onSubmitFinished: () => void;
   onValidationFailure: () => void;
+  payerNamesRequired?: boolean;
+  payerFirstName?: string;
+  payerLastName?: string;
 }) {
   const localId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const formRef = useRef<VgsForm | null>(null);
@@ -203,6 +209,12 @@ export function VgsHostedFields({
       setShowValidation(true);
       return;
     }
+    const firstName = payerFirstName.trim();
+    const lastName = payerLastName.trim();
+    if (payerNamesRequired && (!firstName || !lastName || firstName.length > 64 || lastName.length > 64)) {
+      setError('Enter a first and last name, each no longer than 64 characters.');
+      return;
+    }
     const submitPath = safeSubmitPath(config.submit_path);
     if (!submitPath) {
       setError('Secure card submission is not configured. No payment was submitted.');
@@ -239,9 +251,20 @@ export function VgsHostedFields({
           cvc_alias: formValues.cvc_alias,
           exp_month: formValues.expiry?.exp_month,
           exp_year: formValues.expiry?.exp_year,
+          ...(payerNamesRequired ? { payer_first_name: firstName, payer_last_name: lastName } : {}),
         }),
-      }, (_status, _response) => {
+      }, (status, _response) => {
         window.clearTimeout(timer);
+        if (status === 400) {
+          finished = true;
+          submittedRef.current = false;
+          if (mountedRef.current) {
+            setBusy(false);
+            setError('The card could not be prepared. Check the card details and try again.');
+          }
+          onValidationFailure();
+          return;
+        }
         finishAndRecover();
       }, (_validationErrors) => {
         window.clearTimeout(timer);
