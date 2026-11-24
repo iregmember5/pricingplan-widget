@@ -57,6 +57,7 @@ export interface WidgetCheckoutSession {
   nextAction: Record<string, any> | null;
   collection: WidgetCollectionConfig | null;
   payment: WidgetPaymentStatus | null;
+  servicePaymentPlan: Record<string, any> | null;
 }
 
 const STORAGE_PREFIX = 'payora.widget-checkout.v1';
@@ -113,6 +114,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     nextAction: row?.next_action && typeof row.next_action === 'object' ? row.next_action : null,
     collection: row?.collection && typeof row.collection === 'object' ? row.collection : null,
     payment: row?.payment && typeof row.payment === 'object' ? row.payment : null,
+    servicePaymentPlan: row?.service_payment_plan && typeof row.service_payment_plan === 'object' ? row.service_payment_plan : null,
   };
 
   if (!session.checkoutId || !session.purchaseId || !session.widgetId || !session.planId

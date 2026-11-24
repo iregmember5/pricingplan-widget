@@ -14,6 +14,7 @@ import {
 import { VaultCollectionFlow } from './VaultCollectionFlow';
 import { CpachargeAchFlow } from './CpachargeAchFlow';
 import { supportsCpachargeAch } from './cpachargeAchService';
+import { ServicePaymentPlanFlow } from './ServicePaymentPlanFlow';
 
 interface PaymentFlowProps {
   widgetId: string;
@@ -88,7 +89,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   paymentType = 'one_time',
   onBack,
 }) => {
-  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success'>('methods');
+  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -125,6 +126,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setError('');
     setPriceTimedOut(false);
     setUnavailableModalOpen(false);
+
+    if (session.servicePaymentPlan?.status === 'plan_required') {
+      setBlockedReason('');
+      setStep('plan');
+      return;
+    }
 
     if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session) || session.payment?.receipt_available === true)) {
       setConfirmedReference(session.attemptId || session.purchaseId);
@@ -220,7 +227,10 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       const updated = await getWidgetCheckoutStatus(identity);
       setUnavailableModalOpen(false);
       setCheckout(updated);
-      if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
+      if (updated.servicePaymentPlan?.status === 'plan_required') {
+        setBlockedReason('');
+        setStep('plan');
+      } else if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
         setConfirmedReference(updated.attemptId || updated.purchaseId);
         setStep('success');
       } else if (hasCpachargeAchFlow(updated)) {
@@ -251,6 +261,10 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       setLoading(false);
     }
   };
+
+  if (checkout && identity && step === 'plan') {
+    return <ServicePaymentPlanFlow identity={identity} checkout={checkout} buyerEmail={email} onBack={() => setStep('methods')} />;
+  }
 
   if (step === 'success') {
     return (
