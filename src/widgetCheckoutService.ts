@@ -57,6 +57,7 @@ export interface WidgetCheckoutSession {
   nextAction: Record<string, any> | null;
   collection: WidgetCollectionConfig | null;
   payment: WidgetPaymentStatus | null;
+  servicePaymentPlan: Record<string, any> | null;
 }
 
 const STORAGE_PREFIX = 'payora.widget-checkout.v1';
@@ -123,6 +124,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     nextAction: row?.next_action && typeof row.next_action === 'object' ? row.next_action : null,
     collection: row?.collection && typeof row.collection === 'object' ? row.collection : null,
     payment: row?.payment && typeof row.payment === 'object' ? row.payment : null,
+    servicePaymentPlan: row?.service_payment_plan && typeof row.service_payment_plan === 'object' ? row.service_payment_plan : null,
   };
 
   if (!session.checkoutId || !session.purchaseId || !session.widgetId || !session.planId
@@ -145,12 +147,14 @@ function assertCheckoutMatchesIdentity(session: WidgetCheckoutSession, identity:
 export class WidgetCheckoutRequestError extends Error {
   identity: WidgetCheckoutIdentity;
   phase: 'create' | 'status';
+  httpStatus: number | null;
 
-  constructor(message: string, identity: WidgetCheckoutIdentity, phase: 'create' | 'status') {
+  constructor(message: string, identity: WidgetCheckoutIdentity, phase: 'create' | 'status', httpStatus: number | null = null) {
     super(message);
     this.name = 'WidgetCheckoutRequestError';
     this.identity = identity;
     this.phase = phase;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -212,7 +216,9 @@ function identityPayload(identity: WidgetCheckoutIdentity) {
 
 export async function resumeWidgetCheckout(identity: WidgetCheckoutIdentity) {
   const body = await post('/payments/widget-checkouts/resume/', identityPayload(identity));
-  return normalizeSession(body);
+  const session = normalizeSession(body);
+  assertCheckoutMatchesIdentity(session, identity);
+  return session;
 }
 
 export async function getWidgetCheckoutStatus(identity: WidgetCheckoutIdentity) {
@@ -245,11 +251,14 @@ export async function getOrCreateWidgetCheckout(input: {
     persistIdentity(key, identity);
   }
 
-  if (existing) {
-    // A refresh or lost response recovers the original checkout identity. It
-    // must not issue another create request or mint replacement credentials.
+  if (existing?.createAcknowledged) {
+    // A known-created checkout is recovered. An expired no-attempt checkout
+    // returns immediately so it is not repeatedly resumed or status-polled.
     const resumed = await resumeWidgetCheckout(existing);
     assertCheckoutMatchesIdentity(resumed, existing);
+    if (resumed.status === 'expired' && !resumed.attemptId && !resumed.payment) {
+      return { identity: existing, session: resumed, recovered: true };
+    }
     const current = await getWidgetCheckoutStatus(existing);
     assertCheckoutMatchesIdentity(current, existing);
     if (resumed.purchaseId !== current.purchaseId) {
@@ -258,8 +267,9 @@ export async function getOrCreateWidgetCheckout(input: {
     return { identity: existing, session: current, recovered: true };
   }
 
-  // The first request creates this purchase exactly once. The identity is
-  // persisted before network I/O so later refreshes use /resume/ above.
+  // A first request or an unacknowledged pending request replays create with
+  // its saved identity. This safely recovers a lost create response without
+  // minting a second identity.
   let createdSession: WidgetCheckoutSession;
   try {
     const creationBody = await post('/payments/widget-checkouts/', {
@@ -300,4 +310,94 @@ export async function getOrCreateWidgetCheckout(input: {
     throw new Error('Checkout creation and status returned different purchase references. Keep this checkout and contact support before paying.');
   }
   return { identity, session: statusSession, recovered: Boolean(existing) };
+}
+
+function archiveCheckoutReference(key: string, identity: WidgetCheckoutIdentity, session: WidgetCheckoutSession) {
+  const historyKey = `${key}:history`;
+  let history: Array<Record<string, unknown>> = [];
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(historyKey) || '[]');
+    if (Array.isArray(parsed)) history = parsed;
+  } catch {
+    // Keep the new checkout usable if older local history cannot be parsed.
+  }
+  history.push({
+    creationReference: identity.creationReference,
+    checkoutId: session.checkoutId,
+    purchaseId: session.purchaseId,
+    status: session.status,
+    archivedAt: new Date().toISOString(),
+  });
+  sessionStorage.setItem(historyKey, JSON.stringify(history.slice(-20)));
+}
+
+export async function startNewWidgetCheckout(input: {
+  widgetKind: WidgetKind;
+  widgetId: string;
+  planId: string;
+  quantity: number;
+  expiredIdentity: WidgetCheckoutIdentity;
+  expiredSession: WidgetCheckoutSession;
+  pendingIdentity?: WidgetCheckoutIdentity | null;
+}) {
+  const { widgetKind, widgetId, planId, quantity, expiredIdentity, expiredSession } = input;
+  if (expiredSession.status !== 'expired' || expiredSession.attemptId || expiredSession.payment) {
+    throw new Error('We’re still checking the previous payment. Refresh its status before starting another checkout.');
+  }
+
+  const key = storageKey(widgetKind, widgetId, planId);
+  let identity = input.pendingIdentity || null;
+  if (!identity) {
+    identity = {
+      widgetKind,
+      widgetId,
+      planId,
+      quantity,
+      creationReference: createUuidV4(),
+      recoverySecret: createRecoverySecret(),
+    };
+    archiveCheckoutReference(key, expiredIdentity, expiredSession);
+    // Persist before network I/O so a timeout or refresh reuses this identity.
+    persistIdentity(key, identity);
+  }
+
+  let createdSession: WidgetCheckoutSession;
+  try {
+    const creationBody = await post('/payments/widget-checkouts/', {
+      widget_kind: widgetKind,
+      widget_id: widgetId,
+      plan_id: planId,
+      quantity: identity.quantity,
+      creation_reference: identity.creationReference,
+      recovery_secret: identity.recoverySecret,
+    }, [200, 201]);
+    createdSession = normalizeSession(creationBody);
+    assertCheckoutMatchesIdentity(createdSession, identity);
+    const acknowledgedIdentity = { ...identity, createAcknowledged: true };
+    persistIdentity(key, acknowledgedIdentity);
+    identity = acknowledgedIdentity;
+  } catch (error: any) {
+    const status = Number(error?.message?.match(/\(HTTP (\d{3})\)/)?.[1]) || null;
+    if (status === 400 || status === 422) sessionStorage.removeItem(key);
+    throw new WidgetCheckoutRequestError(
+      error?.message || 'We could not start your new checkout. Retry to safely recover the same request.',
+      identity,
+      'create',
+      status,
+    );
+  }
+
+  try {
+    const statusSession = await getWidgetCheckoutStatus(identity);
+    if (statusSession.purchaseId !== createdSession.purchaseId) {
+      throw new Error('The new checkout reference did not match its status. Keep this page open and contact support before paying.');
+    }
+    return { identity, session: statusSession };
+  } catch (error: any) {
+    throw new WidgetCheckoutRequestError(
+      `Your new checkout was created, but its latest status could not be confirmed. Retry to recover this same checkout. ${error?.message || ''}`.trim(),
+      identity,
+      'status',
+    );
+  }
 }

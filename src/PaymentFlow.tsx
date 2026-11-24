@@ -6,6 +6,7 @@ import { StripeProvider } from './StripeProvider';
 import {
   getOrCreateWidgetCheckout,
   getWidgetCheckoutStatus,
+  startNewWidgetCheckout,
   WidgetCheckoutRequestError,
   type WidgetCheckoutIdentity,
   type WidgetCheckoutSession,
@@ -14,6 +15,7 @@ import {
 import { VaultCollectionFlow } from './VaultCollectionFlow';
 import { CpachargeAchFlow } from './CpachargeAchFlow';
 import { supportsCpachargeAch } from './cpachargeAchService';
+import { ServicePaymentPlanFlow } from './ServicePaymentPlanFlow';
 
 interface PaymentFlowProps {
   widgetId: string;
@@ -73,7 +75,7 @@ function statusMessage(status: string) {
     case 'failed': return 'This payment did not complete. Keep this reference for support.';
     case 'cancelled': return 'This payment was cancelled. Keep this reference for support.';
     case 'ready': return 'This checkout is not currently accepting payment. No payment was submitted. Contact the merchant.';
-    case 'expired': return 'This checkout has expired. Contact the merchant for help.';
+    case 'expired': return 'Your checkout expired. Start a new checkout to continue.';
     case 'offer_changed': return 'The offer changed after this checkout was created. Contact the merchant before starting another checkout.';
     case 'offer_unavailable': return 'This offer cannot accept payment right now. Contact the merchant for help.';
     default: return 'Payment is not confirmed yet. Check the original checkout status before trying again.';
@@ -94,7 +96,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   paymentType = 'one_time',
   onBack,
 }) => {
-  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success'>('methods');
+  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -103,6 +105,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const [blockedReason, setBlockedReason] = useState('');
   const [priceTimedOut, setPriceTimedOut] = useState(false);
   const [retryCreationRequired, setRetryCreationRequired] = useState(false);
+  const [restartIdentity, setRestartIdentity] = useState<WidgetCheckoutIdentity | null>(null);
+  const [restartRejected, setRestartRejected] = useState(false);
   const [unavailableModalOpen, setUnavailableModalOpen] = useState(false);
   const [confirmedReference, setConfirmedReference] = useState('');
   const starting = useRef(false);
@@ -131,6 +135,20 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setError('');
     setPriceTimedOut(false);
     setUnavailableModalOpen(false);
+
+    if (session.status === 'expired') {
+      setBlockedReason(session.attemptId || session.payment
+        ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
+        : statusMessage('expired'));
+      setStep('status');
+      return;
+    }
+
+    if (session.servicePaymentPlan?.status === 'plan_required') {
+      setBlockedReason('');
+      setStep('plan');
+      return;
+    }
 
     if (session.status === 'succeeded' && session.collection?.flow === 'vault_to_moov') {
       setBlockedReason('');
@@ -232,7 +250,15 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       const updated = await getWidgetCheckoutStatus(identity);
       setUnavailableModalOpen(false);
       setCheckout(updated);
-      if (updated.status === 'succeeded' && updated.collection?.flow === 'vault_to_moov') {
+      if (updated.status === 'expired') {
+        setBlockedReason(updated.attemptId || updated.payment
+          ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
+          : statusMessage('expired'));
+        setStep('status');
+      } else if (updated.servicePaymentPlan?.status === 'plan_required') {
+        setBlockedReason('');
+        setStep('plan');
+      } else if (updated.status === 'succeeded' && updated.collection?.flow === 'vault_to_moov') {
         setBlockedReason('');
         setStep('vault');
       } else if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
@@ -266,6 +292,52 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       setLoading(false);
     }
   };
+
+  const startAgain = async () => {
+    if (starting.current || loading || !identity || !checkout) return;
+    if (checkout.status !== 'expired' || checkout.attemptId || checkout.payment) {
+      setError('We’re still checking the previous payment. Refresh its status before starting another checkout.');
+      return;
+    }
+    starting.current = true;
+    setLoading(true);
+    setError('');
+    setUnavailableModalOpen(false);
+    try {
+      const result = await startNewWidgetCheckout({
+        widgetKind: identity.widgetKind,
+        widgetId: identity.widgetId,
+        planId: identity.planId,
+        quantity: identity.quantity,
+        expiredIdentity: identity,
+        expiredSession: checkout,
+        pendingIdentity: restartIdentity,
+      });
+      setRestartIdentity(null);
+      setRestartRejected(false);
+      setRetryCreationRequired(false);
+      openSession(result.identity, result.session);
+    } catch (err: any) {
+      if (err instanceof WidgetCheckoutRequestError) {
+        if (err.httpStatus === 400 || err.httpStatus === 422) {
+          setRestartIdentity(null);
+          setRestartRejected(true);
+        } else {
+          setRestartIdentity(err.identity);
+        }
+      }
+      const message = err?.message || 'We could not start your new checkout. Retry to safely recover the same request.';
+      setError(message);
+      if (/temporarily unavailable|HTTP 503/i.test(message)) setUnavailableModalOpen(true);
+    } finally {
+      starting.current = false;
+      setLoading(false);
+    }
+  };
+
+  if (checkout && identity && step === 'plan') {
+    return <ServicePaymentPlanFlow identity={identity} checkout={checkout} buyerEmail={email} onBack={() => setStep('methods')} />;
+  }
 
   if (step === 'success') {
     return (
@@ -372,19 +444,31 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             <section className="payora-checkout__main">
               <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>
               <div className="payora-checkout__eyebrow">Checkout update</div>
-              <h1 className="payora-checkout__title">We’re checking your payment</h1>
+              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : 'We’re checking your payment'}</h1>
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
               <SupportId value={checkout.purchaseId} />
-              <button className="payora-checkout__text-button payora-checkout__refresh-link" onClick={checkStatus} disabled={loading}>
-                {loading ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
-              </button>
-              <p className="payora-checkout__footer">Keep this page open if your bank is still processing the payment. Do not submit another payment.</p>
+              {checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? (
+                restartRejected ? (
+                  <button className="payora-checkout__button" type="button" onClick={onBack}>Review your plan <ArrowRight size={17} /></button>
+                ) : (
+                  <button className="payora-checkout__button" type="button" onClick={startAgain} disabled={loading}>
+                    {loading ? <><span className="payora-checkout__spinner" /> Starting a new checkout…</> : <>{restartIdentity ? 'Retry starting checkout' : 'Start again'} <ArrowRight size={17} /></>}
+                  </button>
+                )
+              ) : (
+                <button className="payora-checkout__text-button payora-checkout__refresh-link" onClick={checkStatus} disabled={loading}>
+                  {loading ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
+                </button>
+              )}
+              <p className="payora-checkout__footer">{checkout.status === 'expired' && !checkout.attemptId && !checkout.payment
+                ? 'Your previous checkout remains saved for reference. Starting again creates a new secure checkout at the current price and payment settings.'
+                : 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'}</p>
             </section>
             <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={onBack} />
           </div>
         </div>
-        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkStatus} loading={loading} />}
+        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? startAgain : checkStatus} loading={loading} />}
       </div>
     );
   }

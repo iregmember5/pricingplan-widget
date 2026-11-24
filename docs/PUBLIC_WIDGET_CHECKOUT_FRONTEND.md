@@ -2,7 +2,7 @@
 
 This documents the pricing widget's integration with the W1 public checkout API. The backend owns plan pricing and payment state. The initial supported flow is one-time native Stripe card payment in USD or CAD; VGS tokenization and recurring payments are not part of this flow.
 
-## Create or recover a checkout
+## Create, recover, and restart a checkout
 
 API root: `https://mypowerly.com/v1/api`
 
@@ -24,9 +24,7 @@ Content-Type: application/json
 }
 ```
 
-The frontend creates the UUIDv4 and 32-byte cryptographic recovery secret, stores both in `sessionStorage` before the first request, and reuses them for the same widget and plan. Initialization does not send amount, currency, email, gateway, billing interval, or proration data. The backend resolves the published offer and returns the authoritative terms.
-
-For each initial create and recovery retry, replay the creation request with the original plan selection, `creation_reference`, and `recovery_secret`. The backend should return `200` or `201` with the same checkout. Immediately follow it with status using the exact same reference and secret:
+The frontend creates the UUIDv4 and 32-byte cryptographic recovery secret once and stores them with the widget, plan, and quantity before the first request. A network timeout retries the exact same create request with that identity; never generate a new identity just because a response was lost. Initialization does not send amount, currency, email, gateway, billing interval, or proration data. The backend resolves the published offer and returns the authoritative terms. Immediately follow a successful create with status using the same reference and secret:
 
 ```http
 POST /payments/widget-checkouts/status/
@@ -40,7 +38,18 @@ Content-Type: application/json
 }
 ```
 
-The same identity is retained after a timeout. A creation error is not followed by status; retry the same creation request. If creation succeeds but status returns 404, keep the identity and investigate. The frontend never generates a replacement reference/secret or submits a charge automatically. Never log or share the recovery secret, purchase token, or idempotency key.
+For a previously acknowledged checkout, recover it with:
+
+```http
+POST /payments/widget-checkouts/resume/
+Content-Type: application/json
+```
+
+Use the same `creation_reference` and `recovery_secret`. If the returned checkout is `expired`, has `can_submit: false`, and has no payment attempt, stop status polling and do not initialize its collector even if a collection descriptor is present. Show “Your checkout expired. Start a new checkout to continue.” and a **Start again** action. On that explicit action, archive the old checkout reference, generate one new UUIDv4 and one new 32-byte base64url recovery secret, and save them with the same widget, selected plan, and quantity before posting a fresh create request. The backend calculates current price, currency, receiving account, and collection route; do not send those values or the old purchase token.
+
+If the expired checkout has an attempt or payment record, recover its payment status first and do not create another purchase while its result is unresolved. For a failed create response caused by a changed/unavailable offer or merchant setup, show the backend message and return the customer to review the offer before another create attempt. If a new create request times out or its response is lost, retry or resume using that same new identity. A refresh recovers the active identity; it must not create another identity automatically.
+
+The frontend never submits a charge automatically. Never log or share the recovery secret, purchase token, or idempotency key.
 
 ## Checkout response
 
