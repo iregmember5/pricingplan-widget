@@ -77,6 +77,10 @@ function isObject(value: any): value is Record<string, any> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 type CheckoutPlan = {
   planId: string;
   planName?: string;
@@ -443,9 +447,11 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
       return;
     }
 
-    const publicTemplateUrls = [
-      `${API_BASE_URL}/widgets/new-pricing-widget/public/${widgetId}/`,
-    ];
+    // New pricing templates are addressed by UUID. WidgetStorage widgets are
+    // addressed by slug and must use the legacy widget-data endpoint directly.
+    const publicTemplateUrls = isUuid(widgetId)
+      ? [`${API_BASE_URL}/widgets/new-pricing-widget/public/${widgetId}/`]
+      : [];
 
     const legacyWidgetUrls = [
       `${API_BASE_URL}/widgets/widget-data/public/${widgetId}/`,
@@ -469,16 +475,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
             if (hasRenderableNewPricingDoc(normalizedDoc)) {
               if (cancelled) return;
+              // A successful new-pricing lookup is already authoritative. Do
+              // not probe the legacy widget-data endpoint with this pricing
+              // widget ID: it is a different model and commonly returns 404.
               const candidateIds = collectRouterWidgetIds(widgetId, result, normalizedDoc);
-              for (const legacyUrl of legacyWidgetUrls) {
-                try {
-                  const legacyResult = await tryJsonFetch(legacyUrl);
-                  candidateIds.push(...collectRouterWidgetIds(widgetId, legacyResult, legacyResult?.data, legacyResult?.data?.data));
-                  break;
-                } catch (legacyErr) {
-                  console.warn(`Legacy widget id lookup failed for ${legacyUrl}:`, legacyErr);
-                }
-              }
               const uniqueCandidateIds = Array.from(new Set(candidateIds));
               setRouterWidgetIds(uniqueCandidateIds);
               setActualWidgetId(resolveRouterWidgetId(result, widgetId));

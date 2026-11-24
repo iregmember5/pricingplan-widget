@@ -45,8 +45,14 @@ function hasStripeCollection(session: WidgetCheckoutSession) {
 }
 
 function hasVaultCollectionFlow(session: WidgetCheckoutSession) {
-  return session.collection?.flow === 'vault_to_stripe'
-    && session.collection.provider === 'vgs';
+  const config = session.collection;
+  if (!config) return false;
+  const providerReady = config.provider === 'vgs'
+    || config.provider === 'basis_theory' && ['sandbox', 'live'].includes(config.environment || '');
+  if (!providerReady) return false;
+  return config.flow === 'vault_to_moov'
+    ? config.gateway === 'moov'
+    : config.flow === 'vault_to_stripe' && (config.gateway === undefined || config.gateway === 'stripe');
 }
 
 function hasCpachargeAchFlow(session: WidgetCheckoutSession) {
@@ -141,6 +147,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     if (session.servicePaymentPlan?.status === 'plan_required') {
       setBlockedReason('');
       setStep('plan');
+      return;
+    }
+
+    if (session.status === 'succeeded' && session.collection?.flow === 'vault_to_moov') {
+      setBlockedReason('');
+      setStep('vault');
       return;
     }
 
@@ -246,6 +258,9 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       } else if (updated.servicePaymentPlan?.status === 'plan_required') {
         setBlockedReason('');
         setStep('plan');
+      } else if (updated.status === 'succeeded' && updated.collection?.flow === 'vault_to_moov') {
+        setBlockedReason('');
+        setStep('vault');
       } else if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
         setConfirmedReference(updated.attemptId || updated.purchaseId);
         setStep('success');
@@ -280,8 +295,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
   const startAgain = async () => {
     if (starting.current || loading || !identity || !checkout) return;
-    if (checkout.status !== 'expired' || checkout.attemptId || checkout.payment
-      || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)) {
+    if (checkout.status !== 'expired' || checkout.attemptId || checkout.payment) {
       setError('We’re still checking the previous payment. Refresh its status before starting another checkout.');
       return;
     }
@@ -341,6 +355,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 <div><dt>Plan</dt><dd>{displayPlanName}</dd></div>
                 <div><dt>Amount confirmed</dt><dd>{formatCheckoutAmount(checkout?.amount || amount || '0.00', checkout?.currency || currency)}</dd></div>
                 {billingText && <div><dt>Billing</dt><dd>{billingText}</dd></div>}
+                {confirmedReference && <div><dt>Payment reference</dt><dd>{confirmedReference}</dd></div>}
               </dl>
               {(checkout?.purchaseId || confirmedReference) && <SupportId value={checkout?.purchaseId || confirmedReference} />}
               <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>
@@ -435,9 +450,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
               <SupportId value={checkout.purchaseId} />
               {checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? (
                 restartRejected ? (
-                  <button className="payora-checkout__button" type="button" onClick={onBack}>
-                    Review your plan <ArrowRight size={17} />
-                  </button>
+                  <button className="payora-checkout__button" type="button" onClick={onBack}>Review your plan <ArrowRight size={17} /></button>
                 ) : (
                   <button className="payora-checkout__button" type="button" onClick={startAgain} disabled={loading}>
                     {loading ? <><span className="payora-checkout__spinner" /> Starting a new checkout…</> : <>{restartIdentity ? 'Retry starting checkout' : 'Start again'} <ArrowRight size={17} /></>}
