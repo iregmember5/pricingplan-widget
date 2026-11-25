@@ -14,6 +14,7 @@ interface StripeIntegrationProps {
   supportEmail?: string;
   customerEmail?: string;
   onSuccess: (reference: string) => void;
+  onPaymentGuardChange?: (processing: boolean) => void;
   onBack: () => void;
   onChangePlan: () => void;
 }
@@ -42,6 +43,7 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
   supportEmail,
   customerEmail,
   onSuccess,
+  onPaymentGuardChange,
   onBack,
   onChangePlan,
 }) => {
@@ -71,7 +73,10 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
     setCheckoutState(updated);
     setUnavailableModalOpen(false);
     if (updated.status === 'succeeded') {
+      onPaymentGuardChange?.(false);
       onSuccess(updated.attemptId || updated.purchaseId);
+    } else if (['ready', 'failed', 'cancelled'].includes(updated.status)) {
+      onPaymentGuardChange?.(false);
     }
   };
 
@@ -93,6 +98,7 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
   const continueAuthentication = async () => {
     if (!stripe || !hasStripeAction || processing) return;
     setProcessing(true);
+    onPaymentGuardChange?.(true);
     setError('');
     try {
       const result = await stripe.confirmCardPayment(paymentAction.client_secret);
@@ -114,6 +120,7 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
     event.preventDefault();
     if (!stripe || !elements || !completeCard || processing || !canShowCardForm || attemptStarted) return;
     setProcessing(true);
+    onPaymentGuardChange?.(true);
     setError('');
     let chargeRequestStarted = false;
 
@@ -138,10 +145,14 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
       setCheckoutState((current) => ({ ...current, status: result.status || 'uncertain', nextAction }));
 
       if (result.status === 'succeeded') {
+        onPaymentGuardChange?.(false);
         onSuccess(result.attempt_id || result.transaction_id?.toString() || checkoutState.purchaseId);
         return;
       }
-      if (result.status === 'failed' || result.status === 'cancelled') return;
+      if (result.status === 'failed' || result.status === 'cancelled') {
+        onPaymentGuardChange?.(false);
+        return;
+      }
       if (result.status === 'requires_action' && nextAction?.type === 'stripe_authentication') return;
 
       // Nonterminal and unexpected outcomes are checked through the original
@@ -163,6 +174,7 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
         }
       }
     } finally {
+      if (!chargeRequestStarted) onPaymentGuardChange?.(false);
       setProcessing(false);
     }
   };

@@ -22,6 +22,8 @@ function hasRenderableNewPricingDoc(doc: any) {
     && (
       doc.layout
       || (Array.isArray(doc.plans) && doc.plans.length > 0)
+      || String(doc.widget_type || doc.widgetType || '').toUpperCase() === 'PAY_WHAT_YOU_WANT'
+      || Boolean(doc.pay_what_you_want || doc.payWhatYouWant)
       || (doc.theme && typeof doc.theme === 'object' && Object.keys(doc.theme).length > 0)
     )
   );
@@ -70,7 +72,28 @@ function collectRouterWidgetIds(fallback: string, ...payloads: any[]) {
 
 function isEmbedMode() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
+  return ['true', '1'].includes(params.get('embed') || '') || window.location.pathname.startsWith('/embed/');
+}
+
+function getPayWhatYouWantSettings(doc: any) {
+  const raw = doc?.pay_what_you_want || doc?.payWhatYouWant;
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    businessName: raw.business_name || raw.businessName || doc?.business_name || '',
+    logoUrl: raw.logo_url || raw.logoUrl || '',
+    title: raw.title || doc?.name || '',
+    description: raw.description || '',
+    currency: String(raw.currency || 'USD').toUpperCase(),
+    currencyMinorDigits: Number.isInteger(Number(raw.currency_minor_digits)) ? Number(raw.currency_minor_digits) : 2,
+    minimumAmount: raw.minimum_amount ?? raw.minimumAmount ?? null,
+    maximumAmount: raw.maximum_amount ?? raw.maximumAmount ?? null,
+    suggestedAmount: raw.suggested_amount ?? raw.suggestedAmount ?? '',
+    collectReferenceId: raw.collect_reference_id !== false && raw.collectReferenceId !== false,
+    collectComments: raw.collect_comments !== false && raw.collectComments !== false,
+    buttonLabel: raw.button?.label || raw.buttonLabel || 'Pay What You Want',
+    buttonColor: raw.button?.color || raw.buttonColor || '#2B59C3',
+    supportEmail: raw.support_email || raw.supportEmail || '',
+  };
 }
 
 function isObject(value: any): value is Record<string, any> {
@@ -411,6 +434,7 @@ function normalizeWidgetData(raw: any): Record<string, any> {
 const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentPageUnavailable, setPaymentPageUnavailable] = useState(false);
   const [actualWidgetId, setActualWidgetId] = useState<string>('');
   const [routerWidgetIds, setRouterWidgetIds] = useState<string[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<CheckoutPlan | null>(null);
@@ -471,6 +495,13 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
           try {
             console.log('Trying new pricing public template endpoint:', apiUrl);
             const result = await tryJsonFetch(apiUrl);
+            const publicRoot = unwrapTemplatePayload(result);
+            const publicConfig = publicRoot?.config_json || publicRoot?.configJson || publicRoot;
+            const isPwyw = String(publicConfig?.widget_type || publicConfig?.widgetType || '').toUpperCase() === 'PAY_WHAT_YOU_WANT';
+            if (isPwyw && (publicRoot?.is_active !== true || publicRoot?.is_published !== true)) {
+              if (!cancelled) { setContent(null); setPaymentPageUnavailable(true); setLoading(false); }
+              return;
+            }
             const normalizedDoc = normalizeTemplateDoc(unwrapTemplatePayload(result));
 
             if (hasRenderableNewPricingDoc(normalizedDoc)) {
@@ -491,6 +522,10 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
             }
           } catch (err) {
             console.warn(`New pricing template fetch failed for ${apiUrl}:`, err);
+            if (/HTTP 404/.test(String((err as any)?.message || err))) {
+              if (!cancelled) { setContent(null); setPaymentPageUnavailable(true); setLoading(false); }
+              return;
+            }
           }
         }
 
@@ -554,6 +589,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
 
     setLoading(true);
     setContent(null);
+    setPaymentPageUnavailable(false);
     loadContent();
 
     return () => {
@@ -715,7 +751,7 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
         fontSize: '16px',
         background: isEmbedMode() ? 'transparent' : 'white'
       }}>
-        Widget not found or invalid ID
+        {paymentPageUnavailable ? 'This payment page is not available.' : 'Widget not found or invalid ID'}
       </div>
     );
   }
@@ -743,6 +779,22 @@ const Widget: React.FC<{ widgetId: string }> = ({ widgetId }) => {
         }}
       />
     );
+  }
+
+  const pwywSettings = NEW_PRICING_TYPES.has(content.type) ? getPayWhatYouWantSettings(content.data) : null;
+  if (pwywSettings) {
+    return <PaymentFlow
+      widgetId={actualWidgetId || widgetId}
+      widgetIds={routerWidgetIds}
+      widgetKind="new"
+      planId=""
+      planName={pwywSettings.title}
+      amount={pwywSettings.suggestedAmount == null ? '' : String(pwywSettings.suggestedAmount)}
+      currency={pwywSettings.currency}
+      payWhatYouWant={pwywSettings}
+      supportEmail={pwywSettings.supportEmail}
+      onBack={() => {}}
+    />;
   }
 
   if (
