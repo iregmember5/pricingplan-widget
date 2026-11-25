@@ -7,6 +7,11 @@ export interface WidgetCheckoutIdentity {
   widgetId: string;
   planId: string;
   quantity: number;
+  amountMinor?: number;
+  currencyMinorDigits?: number;
+  referenceId?: string;
+  comments?: string;
+  embedOrigin?: string;
   creationReference: string;
   recoverySecret: string;
   createAcknowledged?: boolean;
@@ -43,6 +48,9 @@ export interface WidgetCheckoutSession {
   widgetId: string;
   planId: string;
   planName: string;
+  pricingMode: string;
+  referenceId: string;
+  comments: string;
   quantity: number;
   unitAmount: string;
   amount: string;
@@ -73,7 +81,10 @@ function retryAfterMs(value: string | null) {
 }
 
 function storageKey(widgetKind: WidgetKind, widgetId: string, planId: string) {
-  return `${STORAGE_PREFIX}:${widgetKind}:${widgetId}:${planId}`;
+  // A PWYW widget has one pending intent at a time. A changed amount must not
+  // silently mint a second identity while the previous request is unresolved.
+  const identityKey = planId || 'pwyw-pending';
+  return `${STORAGE_PREFIX}:${widgetKind}:${widgetId}:${identityKey}`;
 }
 
 function createUuidV4() {
@@ -94,7 +105,7 @@ function createRecoverySecret() {
 function extractData(body: any) {
   if (body?.success !== true || !body?.data || typeof body.data !== 'object') {
     const fieldErrors = body?.errors && typeof body.errors === 'object'
-      ? Object.values(body.errors).flat().filter(Boolean).join(' ')
+      ? Object.values(body.errors).flatMap((value: any) => Array.isArray(value) ? value : [value]).filter(Boolean).join(' ')
       : '';
     throw new Error(fieldErrors || body?.message || 'The checkout request was rejected.');
   }
@@ -108,8 +119,11 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     purchaseId: String(row?.purchase_id || ''),
     widgetKind: row?.widget_kind,
     widgetId: String(row?.widget_id || ''),
-    planId: String(row?.plan_id || ''),
+    planId: row?.plan_id == null ? '' : String(row.plan_id),
     planName: String(row?.plan_name || ''),
+    pricingMode: String(row?.pricing_mode || ''),
+    referenceId: String(row?.reference_id || ''),
+    comments: String(row?.comments || ''),
     quantity: Number(row?.quantity || 1),
     unitAmount: String(row?.unit_amount ?? ''),
     amount: String(row?.amount ?? ''),
@@ -127,7 +141,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     servicePaymentPlan: row?.service_payment_plan && typeof row.service_payment_plan === 'object' ? row.service_payment_plan : null,
   };
 
-  if (!session.checkoutId || !session.purchaseId || !session.widgetId || !session.planId
+  if (!session.checkoutId || !session.purchaseId || !session.widgetId
     || !['new', 'legacy'].includes(session.widgetKind)
     || !Number.isInteger(session.quantity) || session.quantity < 1
     || !/^\d+(\.\d{1,2})?$/.test(session.amount) || !/^[A-Z]{3}$/.test(session.currency)
@@ -139,22 +153,41 @@ function normalizeSession(body: any): WidgetCheckoutSession {
 
 function assertCheckoutMatchesIdentity(session: WidgetCheckoutSession, identity: WidgetCheckoutIdentity) {
   if (session.widgetKind !== identity.widgetKind || session.widgetId !== identity.widgetId
-    || session.planId !== identity.planId || session.quantity !== identity.quantity) {
+    || identity.planId && session.planId !== identity.planId
+    || !identity.planId && session.planId && !(session.planId === 'pay_what_you_want' && (session.pricingMode === 'pay_what_you_want' || Number.isInteger(identity.amountMinor)))
+    || session.quantity !== identity.quantity) {
     throw new Error('The payment service returned a checkout for a different published offer. Stop and contact support.');
   }
+}
+
+function checkoutCreatePayload(identity: WidgetCheckoutIdentity) {
+  return {
+    widget_kind: identity.widgetKind,
+    widget_id: identity.widgetId,
+    ...(identity.planId ? { plan_id: identity.planId } : {}),
+    quantity: identity.quantity,
+    ...(Number.isInteger(identity.amountMinor) ? { amount_minor: identity.amountMinor } : {}),
+    ...(identity.referenceId ? { reference_id: identity.referenceId } : {}),
+    ...(identity.comments ? { comments: identity.comments } : {}),
+    ...(identity.embedOrigin ? { embed_origin: identity.embedOrigin } : {}),
+    creation_reference: identity.creationReference,
+    recovery_secret: identity.recoverySecret,
+  };
 }
 
 export class WidgetCheckoutRequestError extends Error {
   identity: WidgetCheckoutIdentity;
   phase: 'create' | 'status';
   httpStatus: number | null;
+  fieldErrors: Record<string, string[]>;
 
-  constructor(message: string, identity: WidgetCheckoutIdentity, phase: 'create' | 'status', httpStatus: number | null = null) {
+  constructor(message: string, identity: WidgetCheckoutIdentity, phase: 'create' | 'status', httpStatus: number | null = null, fieldErrors: Record<string, string[]> = {}) {
     super(message);
     this.name = 'WidgetCheckoutRequestError';
     this.identity = identity;
     this.phase = phase;
     this.httpStatus = httpStatus;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -177,8 +210,13 @@ async function post(path: string, payload: Record<string, unknown>, expectedStat
       const backoff = Math.min(30000, 1000 * (2 ** Math.min(count, 5)));
       endpointRetryAt.set(path, Date.now() + Math.max(backoff, retryAfterMs(response.headers.get('Retry-After'))));
     }
-    const message = body?.message || body?.error || `Checkout request failed (HTTP ${response.status}).`;
-    throw new Error(`${message} (HTTP ${response.status})`);
+    const rawErrors = body?.errors && typeof body.errors === 'object' ? body.errors : {};
+    const fieldErrors = Object.fromEntries(Object.entries(rawErrors).map(([key, value]: [string, any]) => [key, (Array.isArray(value) ? value : [value]).map(String)]));
+    const message = body?.message || body?.error || Object.values(fieldErrors).flat().join(' ') || `Checkout request failed (HTTP ${response.status}).`;
+    const error: any = new Error(`${message} (HTTP ${response.status})`);
+    error.httpStatus = response.status;
+    error.fieldErrors = fieldErrors;
+    throw error;
   }
   endpointRetryAt.delete(path);
   endpointRetryCount.delete(path);
@@ -195,12 +233,42 @@ function readIdentity(key: string): WidgetCheckoutIdentity | null {
     const value = JSON.parse(raw);
     if (
       value?.creationReference && value?.recoverySecret
-      && value?.widgetKind && value?.widgetId && value?.planId
+      && value?.widgetKind && value?.widgetId && value?.planId !== undefined
     ) return value as WidgetCheckoutIdentity;
   } catch {
     // An unreadable stored credential is not replaced automatically.
   }
   throw new Error('A saved checkout reference could not be read. Do not start another checkout in this tab.');
+}
+
+export function getSavedPayWhatYouWantIntent(widgetId: string) {
+  try {
+    const identity = readIdentity(storageKey('new', widgetId, ''));
+    if (!identity || !Number.isInteger(identity.amountMinor)) return null;
+    return {
+      amount: (identity.amountMinor! / (10 ** (identity.currencyMinorDigits ?? 2))).toFixed(identity.currencyMinorDigits ?? 2),
+      currencyMinorDigits: identity.currencyMinorDigits ?? 2,
+      referenceId: identity.referenceId || '',
+      comments: identity.comments || '',
+      embedOrigin: identity.embedOrigin || '',
+      locked: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearConfirmedPayWhatYouWantIntent(identity: WidgetCheckoutIdentity) {
+  if (!identity.widgetId || identity.planId) return;
+  sessionStorage.removeItem(storageKey(identity.widgetKind, identity.widgetId, ''));
+}
+
+export function clearTerminalPayWhatYouWantIntent(identity: WidgetCheckoutIdentity, session: WidgetCheckoutSession) {
+  const safeTerminal = ['offer_changed', 'offer_unavailable', 'expired'].includes(session.status)
+    && !session.attemptId && !session.payment;
+  if (!identity.widgetId || identity.planId || !safeTerminal) return false;
+  sessionStorage.removeItem(storageKey(identity.widgetKind, identity.widgetId, ''));
+  return true;
 }
 
 function persistIdentity(key: string, identity: WidgetCheckoutIdentity) {
@@ -231,17 +299,33 @@ export async function getWidgetCheckoutStatus(identity: WidgetCheckoutIdentity) 
 export async function getOrCreateWidgetCheckout(input: {
   widgetKind: WidgetKind;
   widgetId: string;
-  planId: string;
+  planId?: string;
   quantity?: number;
+  amountMinor?: number;
+  currencyMinorDigits?: number;
+  referenceId?: string;
+  comments?: string;
+  embedOrigin?: string;
 }) {
-  const { widgetKind, widgetId, planId, quantity = 1 } = input;
+  const { widgetKind, widgetId, planId = '', quantity = 1, amountMinor, currencyMinorDigits = 2, referenceId, comments, embedOrigin } = input;
   const key = storageKey(widgetKind, widgetId, planId);
   const existing = readIdentity(key);
+  if (existing && (!planId && (existing.amountMinor !== amountMinor
+    || (existing.referenceId || '') !== (referenceId || '')
+    || (existing.comments || '') !== (comments || '')
+    || (existing.embedOrigin || '') !== (embedOrigin || '')))) {
+    throw new Error('A previous payment request for this widget is still saved. Retry it with the same amount and details, or check its payment status before starting another payment.');
+  }
   const identity: WidgetCheckoutIdentity = existing || {
     widgetKind,
     widgetId,
     planId,
     quantity,
+    ...(Number.isInteger(amountMinor) ? { amountMinor } : {}),
+    ...(Number.isInteger(amountMinor) ? { currencyMinorDigits } : {}),
+    ...(referenceId ? { referenceId } : {}),
+    ...(comments ? { comments } : {}),
+    ...(embedOrigin ? { embedOrigin } : {}),
     creationReference: createUuidV4(),
     recoverySecret: createRecoverySecret(),
   };
@@ -272,14 +356,7 @@ export async function getOrCreateWidgetCheckout(input: {
   // minting a second identity.
   let createdSession: WidgetCheckoutSession;
   try {
-    const creationBody = await post('/payments/widget-checkouts/', {
-      widget_kind: widgetKind,
-      widget_id: widgetId,
-      plan_id: planId,
-      quantity: identity.quantity,
-      creation_reference: identity.creationReference,
-      recovery_secret: identity.recoverySecret,
-    }, [200, 201]);
+    const creationBody = await post('/payments/widget-checkouts/', checkoutCreatePayload(identity), [200, 201]);
     createdSession = normalizeSession(creationBody);
     assertCheckoutMatchesIdentity(createdSession, identity);
     const acknowledgedIdentity = { ...identity, createAcknowledged: true };
@@ -287,10 +364,26 @@ export async function getOrCreateWidgetCheckout(input: {
     Object.assign(identity, acknowledgedIdentity);
   } catch (error: any) {
     if (error instanceof WidgetCheckoutRequestError) throw error;
+    const status = Number(error?.message?.match(/\(HTTP (\d{3})\)/)?.[1]) || null;
+    if (status === 409) {
+      try {
+        const resumed = await resumeWidgetCheckout(identity);
+        const acknowledgedIdentity = { ...identity, createAcknowledged: true };
+        persistIdentity(key, acknowledgedIdentity);
+        const current = await getWidgetCheckoutStatus(acknowledgedIdentity);
+        if (current.purchaseId === resumed.purchaseId) return { identity: acknowledgedIdentity, session: current, recovered: true };
+      } catch {
+        // Leave the same identity in place. The UI can retry or check status;
+        // it must not manufacture a replacement identity for an unresolved 409.
+      }
+    }
+    if (status === 400 || status === 422) sessionStorage.removeItem(key);
     throw new WidgetCheckoutRequestError(
       error?.message || 'Checkout could not be created. Keep this checkout and retry the same request.',
       identity,
       'create',
+      error?.httpStatus || status,
+      error?.fieldErrors || {},
     );
   }
 
@@ -334,17 +427,29 @@ function archiveCheckoutReference(key: string, identity: WidgetCheckoutIdentity,
 export async function startNewWidgetCheckout(input: {
   widgetKind: WidgetKind;
   widgetId: string;
-  planId: string;
+  planId?: string;
   quantity: number;
+  amountMinor?: number;
+  currencyMinorDigits?: number;
+  referenceId?: string;
+  comments?: string;
+  embedOrigin?: string;
   expiredIdentity: WidgetCheckoutIdentity;
   expiredSession: WidgetCheckoutSession;
   pendingIdentity?: WidgetCheckoutIdentity | null;
 }) {
-  const { widgetKind, widgetId, planId, quantity, expiredIdentity, expiredSession } = input;
+  const { widgetKind, widgetId, planId = '', quantity, expiredIdentity, expiredSession } = input;
   if (expiredSession.status !== 'expired' || expiredSession.attemptId || expiredSession.payment) {
     throw new Error('We’re still checking the previous payment. Refresh its status before starting another checkout.');
   }
 
+  const intent = {
+    amountMinor: input.amountMinor ?? expiredIdentity.amountMinor,
+    currencyMinorDigits: input.currencyMinorDigits ?? expiredIdentity.currencyMinorDigits ?? 2,
+    referenceId: input.referenceId ?? expiredIdentity.referenceId ?? '',
+    comments: input.comments ?? expiredIdentity.comments ?? '',
+    embedOrigin: input.embedOrigin ?? expiredIdentity.embedOrigin ?? '',
+  };
   const key = storageKey(widgetKind, widgetId, planId);
   let identity = input.pendingIdentity || null;
   if (!identity) {
@@ -353,6 +458,11 @@ export async function startNewWidgetCheckout(input: {
       widgetId,
       planId,
       quantity,
+      ...(Number.isInteger(intent.amountMinor) ? { amountMinor: intent.amountMinor } : {}),
+      ...(Number.isInteger(intent.amountMinor) ? { currencyMinorDigits: intent.currencyMinorDigits } : {}),
+      ...(intent.referenceId ? { referenceId: intent.referenceId } : {}),
+      ...(intent.comments ? { comments: intent.comments } : {}),
+      ...(intent.embedOrigin ? { embedOrigin: intent.embedOrigin } : {}),
       creationReference: createUuidV4(),
       recoverySecret: createRecoverySecret(),
     };
@@ -363,14 +473,7 @@ export async function startNewWidgetCheckout(input: {
 
   let createdSession: WidgetCheckoutSession;
   try {
-    const creationBody = await post('/payments/widget-checkouts/', {
-      widget_kind: widgetKind,
-      widget_id: widgetId,
-      plan_id: planId,
-      quantity: identity.quantity,
-      creation_reference: identity.creationReference,
-      recovery_secret: identity.recoverySecret,
-    }, [200, 201]);
+    const creationBody = await post('/payments/widget-checkouts/', checkoutCreatePayload(identity), [200, 201]);
     createdSession = normalizeSession(creationBody);
     assertCheckoutMatchesIdentity(createdSession, identity);
     const acknowledgedIdentity = { ...identity, createAcknowledged: true };

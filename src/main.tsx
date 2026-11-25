@@ -18,7 +18,7 @@ if (paymentReturnToken) {
 // Check if we're in embed mode
 function isEmbedMode(): boolean {
   const params = new URLSearchParams(window.location.search);
-  return params.get('embed') === 'true' || window.location.pathname.startsWith('/embed/');
+  return ['true', '1'].includes(params.get('embed') || '') || window.location.pathname.startsWith('/embed/');
 }
 
 function getSlug(): string | null {
@@ -29,8 +29,11 @@ function getSlug(): string | null {
   if (!slug && window.location.pathname.startsWith('/embed/')) {
     slug = window.location.pathname.split('/embed/')[1];
   }
+  if (!slug && window.location.pathname.startsWith('/pay/')) {
+    slug = window.location.pathname.split('/pay/')[1]?.split('/')[0] || null;
+  }
 
-  return slug;
+  return slug ? decodeURIComponent(slug) : null;
 }
 
 // Detect widget type from container class

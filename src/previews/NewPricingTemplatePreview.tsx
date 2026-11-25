@@ -3251,7 +3251,9 @@ function hasRenderableCore(value) {
     || isPlainObject(value.layout);
   const hasPlans = Array.isArray(value.plans) && value.plans.length > 0;
   const hasTheme = isPlainObject(value.theme) && Object.keys(value.theme).length > 0;
-  return hasLayout || hasPlans || hasTheme;
+  const isPayWhatYouWant = String(value.widget_type || value.widgetType || '').toUpperCase() === 'PAY_WHAT_YOU_WANT'
+    || isPlainObject(value.pay_what_you_want) || isPlainObject(value.payWhatYouWant);
+  return hasLayout || hasPlans || hasTheme || isPayWhatYouWant;
 }
 
 function preferNonEmptyString(primary, fallback = "") {

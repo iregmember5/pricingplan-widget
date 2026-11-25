@@ -7,6 +7,9 @@ import {
   getOrCreateWidgetCheckout,
   getWidgetCheckoutStatus,
   startNewWidgetCheckout,
+  getSavedPayWhatYouWantIntent,
+  clearConfirmedPayWhatYouWantIntent,
+  clearTerminalPayWhatYouWantIntent,
   WidgetCheckoutRequestError,
   type WidgetCheckoutIdentity,
   type WidgetCheckoutSession,
@@ -33,6 +36,14 @@ interface PaymentFlowProps {
   targetGateway?: string;
   trialDays?: number;
   prorationBehavior?: string;
+  payWhatYouWant?: {
+    businessName?: string; logoUrl?: string; title?: string; description?: string;
+    currency?: string; suggestedAmount?: string; supportEmail?: string;
+    currencyMinorDigits?: number;
+    minimumAmount?: string | null; maximumAmount?: string | null;
+    collectReferenceId?: boolean; collectComments?: boolean;
+    buttonLabel?: string; buttonColor?: string;
+  };
   useNewPaymentApi?: boolean;
   paymentMethod?: 'stripe_direct' | 'vault';
   onBack: () => void;
@@ -76,9 +87,40 @@ function statusMessage(status: string) {
     case 'cancelled': return 'This payment was cancelled. Keep this reference for support.';
     case 'ready': return 'This checkout is not currently accepting payment. No payment was submitted. Contact the merchant.';
     case 'expired': return 'Your checkout expired. Start a new checkout to continue.';
-    case 'offer_changed': return 'The offer changed after this checkout was created. Contact the merchant before starting another checkout.';
+    case 'offer_changed': return 'The merchant updated this payment page after the checkout was created. Review the latest details before continuing.';
     case 'offer_unavailable': return 'This offer cannot accept payment right now. Contact the merchant for help.';
     default: return 'Payment is not confirmed yet. Check the original checkout status before trying again.';
+  }
+}
+
+function isEmbedMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('embed') === 'true' || params.get('embed') === '1' || window.location.pathname.startsWith('/embed/');
+}
+
+function getEmbedOrigin() {
+  if (!isEmbedMode()) return '';
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('origin');
+  const candidate = requested || document.referrer;
+  try {
+    const parsed = new URL(candidate || '');
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== candidate && requested) return '';
+    if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) return '';
+    return parsed.origin;
+  } catch { return ''; }
+}
+
+function matchesCurrencyPrecision(value: string, minorDigits: number) {
+  return (minorDigits > 0 ? new RegExp(`^\\d+(?:\\.\\d{1,${minorDigits}})?$`) : /^\d+$/).test(value);
+}
+
+function postEmbedMessage(type: 'payment_processing' | 'payment_ready' | 'payment_succeeded') {
+  if (window.parent === window || !isEmbedMode() || !document.referrer) return;
+  try {
+    window.parent.postMessage({ type }, new URL(document.referrer).origin);
+  } catch {
+    // Ignore malformed referrers; the embed loader validates origin and source.
   }
 }
 
@@ -94,12 +136,19 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   amount,
   currency = 'USD',
   paymentType = 'one_time',
+  payWhatYouWant,
   onBack,
 }) => {
+  const savedPwywIntent = payWhatYouWant ? getSavedPayWhatYouWantIntent(widgetId) : null;
   const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
+  const [customerAmount, setCustomerAmount] = useState(savedPwywIntent?.amount || amount || '');
+  const [referenceId, setReferenceId] = useState(savedPwywIntent?.referenceId || '');
+  const [comments, setComments] = useState(savedPwywIntent?.comments || '');
+  const [pwywIntentLocked, setPwywIntentLocked] = useState(Boolean(savedPwywIntent?.locked));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pwywFieldErrors, setPwywFieldErrors] = useState<Record<string, string>>({});
   const [identity, setIdentity] = useState<WidgetCheckoutIdentity | null>(null);
   const [checkout, setCheckout] = useState<WidgetCheckoutSession | null>(null);
   const [blockedReason, setBlockedReason] = useState('');
@@ -107,9 +156,16 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const [retryCreationRequired, setRetryCreationRequired] = useState(false);
   const [restartIdentity, setRestartIdentity] = useState<WidgetCheckoutIdentity | null>(null);
   const [restartRejected, setRestartRejected] = useState(false);
+
+  useEffect(() => {
+    if (step !== 'success' || !payWhatYouWant) return;
+    postEmbedMessage('payment_succeeded');
+    if (identity) clearConfirmedPayWhatYouWantIntent(identity);
+  }, [step, payWhatYouWant, identity]);
   const [unavailableModalOpen, setUnavailableModalOpen] = useState(false);
   const [confirmedReference, setConfirmedReference] = useState('');
   const starting = useRef(false);
+  const autoPwywRecoveryStarted = useRef(false);
   const displayPlanName = checkout?.planName || planName || 'Selected plan';
   const displayPlanPrice = amount ? formatCheckoutAmount(amount, currency) : '';
   const continuePriceLabel = displayPlanPrice ? `${displayPlanPrice}${billingText ? ` · ${billingText}` : ''}` : '';
@@ -140,6 +196,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       setBlockedReason(session.attemptId || session.payment
         ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
         : statusMessage('expired'));
+      setStep('status');
+      return;
+    }
+
+    if (session.status === 'offer_changed' || session.status === 'offer_unavailable') {
+      setBlockedReason(statusMessage(session.status));
       setStep('status');
       return;
     }
@@ -208,9 +270,41 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       setError('This checkout currently supports one-time payments only.');
       return;
     }
-    if (!widgetId?.trim() || !planId?.trim()) {
+    if (!widgetId?.trim() || (!payWhatYouWant && !planId?.trim())) {
       setError('The published widget or plan ID is missing.');
       return;
+    }
+    let amountMinor: number | undefined;
+    if (payWhatYouWant) {
+      const value = customerAmount.trim();
+      const minorDigits = Math.max(0, Math.min(4, Number(payWhatYouWant.currencyMinorDigits ?? 2)));
+      if (!matchesCurrencyPrecision(value, minorDigits) || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+        setError(`Enter a valid amount greater than zero, with no more than ${minorDigits} decimal places.`);
+        return;
+      }
+      amountMinor = Math.round(Number(value) * (10 ** minorDigits));
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+        setError('Enter an amount the payment service can process.');
+        return;
+      }
+      const minimum = payWhatYouWant.minimumAmount ? Number(payWhatYouWant.minimumAmount) : null;
+      const maximum = payWhatYouWant.maximumAmount ? Number(payWhatYouWant.maximumAmount) : null;
+      if (!savedPwywIntent && minimum !== null && Number.isFinite(minimum) && Number(value) < minimum) {
+        setError(`The minimum payment is ${formatCheckoutAmount(payWhatYouWant.minimumAmount!, currency)}.`);
+        return;
+      }
+      if (!savedPwywIntent && maximum !== null && Number.isFinite(maximum) && Number(value) > maximum) {
+        setError(`The maximum payment is ${formatCheckoutAmount(payWhatYouWant.maximumAmount!, currency)}.`);
+        return;
+      }
+      if (referenceId.length > 100 || comments.length > 500) {
+        setError('Reference IDs must be 100 characters or fewer and comments 500 characters or fewer.');
+        return;
+      }
+      if (/[\u0000-\u001f\u007f]/.test(referenceId) || /[\u0000-\u0009\u000b-\u001f\u007f]/.test(comments)) {
+        setError('Remove unsupported control characters from the Reference ID or comment.');
+        return;
+      }
     }
     if (widgetId.trim() === 'mock-new-pricing') {
       setError('This sample preview cannot start a real checkout. Open a published widget to test payments.');
@@ -218,22 +312,41 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     }
 
     starting.current = true;
+    if (payWhatYouWant) setPwywIntentLocked(true);
     setPriceTimedOut(false);
     setLoading(true);
     setError('');
+    setPwywFieldErrors({});
     try {
       const result = await getOrCreateWidgetCheckout({
         widgetKind,
         widgetId: widgetId.trim(),
-        planId: planId.trim(),
+        planId: payWhatYouWant ? '' : planId.trim(),
         quantity: 1,
+        ...(amountMinor !== undefined ? { amountMinor } : {}),
+        ...(payWhatYouWant ? { currencyMinorDigits: payWhatYouWant.currencyMinorDigits ?? 2 } : {}),
+        ...(payWhatYouWant && referenceId ? { referenceId } : {}),
+        ...(payWhatYouWant && comments ? { comments } : {}),
+        ...(payWhatYouWant && (savedPwywIntent?.embedOrigin || getEmbedOrigin())
+          ? { embedOrigin: savedPwywIntent?.embedOrigin || getEmbedOrigin() } : {}),
       });
       setRetryCreationRequired(false);
       openSession(result.identity, result.session);
     } catch (err: any) {
       const message = err?.message || 'Checkout could not be created or recovered. Keep this page open and do not start another checkout.';
       setError(message);
-      if (err instanceof WidgetCheckoutRequestError && err.phase === 'create') setRetryCreationRequired(true);
+      if (err instanceof WidgetCheckoutRequestError && err.phase === 'create') {
+        const rejected = err.httpStatus === 400 || err.httpStatus === 422;
+        setRetryCreationRequired(!rejected);
+        if (payWhatYouWant && rejected) setPwywIntentLocked(false);
+        if (payWhatYouWant) {
+          const entries = Object.entries(err.fieldErrors || {}).map(([key, messages]) => [key, messages[0]] as const);
+          setPwywFieldErrors(Object.fromEntries(entries));
+          if (err.httpStatus === 404) setError('This payment page is not available.');
+          else if (err.httpStatus === 409) setError('This payment request conflicts with an earlier checkout. Retry the same request or check its status before starting another payment.');
+          else if (err.httpStatus && err.httpStatus >= 500 && !/unavailable/i.test(message)) setError('Payments are temporarily unavailable. Please try again later.');
+        }
+      }
       if (err instanceof WidgetCheckoutRequestError && err.phase === 'status') setRetryCreationRequired(false);
       if (/temporarily unavailable|HTTP 503/i.test(message)) setUnavailableModalOpen(true);
     } finally {
@@ -241,6 +354,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!payWhatYouWant || !savedPwywIntent || autoPwywRecoveryStarted.current) return;
+    autoPwywRecoveryStarted.current = true;
+    void beginCheckout();
+  }, [widgetId, payWhatYouWant, savedPwywIntent]);
 
   const checkStatus = async () => {
     if (!identity || loading) return;
@@ -254,6 +373,9 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         setBlockedReason(updated.attemptId || updated.payment
           ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
           : statusMessage('expired'));
+        setStep('status');
+      } else if (updated.status === 'offer_changed' || updated.status === 'offer_unavailable') {
+        setBlockedReason(statusMessage(updated.status));
         setStep('status');
       } else if (updated.servicePaymentPlan?.status === 'plan_required') {
         setBlockedReason('');
@@ -423,6 +545,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           savingsText={savingsText}
           supportEmail={supportEmail}
           customerEmail={email}
+          onPaymentGuardChange={(processing) => postEmbedMessage(processing ? 'payment_processing' : 'payment_ready')}
           onSuccess={(reference) => {
             setConfirmedReference(reference);
             setStep('success');
@@ -435,6 +558,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   }
 
   if (checkout && identity && step === 'status') {
+    const offerNeedsRestart = payWhatYouWant && ['offer_changed', 'offer_unavailable'].includes(checkout.status)
+      && !checkout.attemptId && !checkout.payment;
+    const restartFromUpdatedOffer = () => {
+      if (!identity || !checkout || !clearTerminalPayWhatYouWantIntent(identity, checkout)) return;
+      window.location.reload();
+    };
     return (
       <div className="payora-checkout">
         <div className="payora-checkout__container">
@@ -442,9 +571,9 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           <CheckoutProgress active={2} />
           <div className="payora-checkout__grid">
             <section className="payora-checkout__main">
-              <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>
+              {!payWhatYouWant && <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>}
               <div className="payora-checkout__eyebrow">Checkout update</div>
-              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : 'We’re checking your payment'}</h1>
+              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : offerNeedsRestart ? 'Payment page updated' : 'We’re checking your payment'}</h1>
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
               <SupportId value={checkout.purchaseId} />
@@ -456,12 +585,16 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                     {loading ? <><span className="payora-checkout__spinner" /> Starting a new checkout…</> : <>{restartIdentity ? 'Retry starting checkout' : 'Start again'} <ArrowRight size={17} /></>}
                   </button>
                 )
+              ) : offerNeedsRestart ? (
+                <button className="payora-checkout__button" type="button" onClick={restartFromUpdatedOffer} disabled={loading}>Review updated payment page <ArrowRight size={17} /></button>
               ) : (
                 <button className="payora-checkout__text-button payora-checkout__refresh-link" onClick={checkStatus} disabled={loading}>
                   {loading ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
                 </button>
               )}
-              <p className="payora-checkout__footer">{checkout.status === 'expired' && !checkout.attemptId && !checkout.payment
+              <p className="payora-checkout__footer">{offerNeedsRestart
+                ? 'The previous checkout will not be charged. Reloading clears its unused request and fetches the latest published payment page.'
+                : checkout.status === 'expired' && !checkout.attemptId && !checkout.payment
                 ? 'Your previous checkout remains saved for reference. Starting again creates a new secure checkout at the current price and payment settings.'
                 : 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'}</p>
             </section>
@@ -471,6 +604,35 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? startAgain : checkStatus} loading={loading} />}
       </div>
     );
+  }
+
+  if (payWhatYouWant) {
+    const minorDigits = Math.max(0, Math.min(4, Number(payWhatYouWant.currencyMinorDigits ?? 2)));
+    const amountValid = matchesCurrencyPrecision(customerAmount.trim(), minorDigits) && Number(customerAmount) > 0;
+    const buttonColor = /^#[0-9a-f]{6}$/i.test(payWhatYouWant.buttonColor || '') ? payWhatYouWant.buttonColor : '#2456a6';
+    return <div className={`payora-checkout payora-checkout--pwyw${isEmbedMode() ? ' is-embedded' : ''}`}>
+      <div className="payora-checkout__pwyw-shell">
+        <section className="payora-checkout__pwyw-card">
+          <div className="payora-checkout__pwyw-business">{payWhatYouWant.logoUrl && <img src={payWhatYouWant.logoUrl} alt="" />}{payWhatYouWant.businessName || 'Secure payment'}</div>
+          <div className="payora-checkout__eyebrow">One-time payment</div>
+          <h1 className="payora-checkout__title">{payWhatYouWant.title || 'Pay What You Want'}</h1>
+          {payWhatYouWant.description && <p className="payora-checkout__description">{payWhatYouWant.description}</p>}
+          <label className="payora-checkout__field"><span>Amount <strong aria-hidden="true">*</strong></span>
+            <span className="payora-checkout__pwyw-amount"><span>{currency === 'CAD' ? 'CA$' : '$'}</span><input aria-label={`Amount in ${currency}`} inputMode="decimal" autoComplete="off" value={customerAmount} onChange={(event) => { setCustomerAmount(event.target.value); setError(''); setPwywFieldErrors((current) => ({ ...current, amount_minor: '' })); }} disabled={pwywIntentLocked || loading} placeholder="0.00" /><span className="payora-checkout__pwyw-currency">{currency}</span></span>
+          </label>
+          {pwywFieldErrors.amount_minor && <p className="payora-checkout__field-error" role="alert">{pwywFieldErrors.amount_minor}</p>}
+          {(payWhatYouWant.minimumAmount || payWhatYouWant.maximumAmount) && <p className="payora-checkout__pwyw-hint">{payWhatYouWant.minimumAmount ? `Minimum ${formatCheckoutAmount(payWhatYouWant.minimumAmount, currency)}` : ''}{payWhatYouWant.minimumAmount && payWhatYouWant.maximumAmount ? ' · ' : ''}{payWhatYouWant.maximumAmount ? `Maximum ${formatCheckoutAmount(payWhatYouWant.maximumAmount, currency)}` : ''}</p>}
+          {payWhatYouWant.collectReferenceId && <label className="payora-checkout__field"><span>Reference ID <em>(optional)</em></span><input className="payora-checkout__input" maxLength={100} value={referenceId} onChange={(event) => { setReferenceId(event.target.value); setPwywFieldErrors((current) => ({ ...current, reference_id: '' })); }} disabled={pwywIntentLocked || loading} placeholder="e.g. Invoice #1042 or Client ID" /><small>Helps the business match your payment.</small>{pwywFieldErrors.reference_id && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.reference_id}</small>}</label>}
+          {payWhatYouWant.collectComments && <label className="payora-checkout__field"><span>Comments <em>(optional)</em></span><textarea className="payora-checkout__input payora-checkout__pwyw-comments" maxLength={500} value={comments} onChange={(event) => { setComments(event.target.value); setPwywFieldErrors((current) => ({ ...current, comments: '' })); }} disabled={pwywIntentLocked || loading} placeholder="Add a note for the business" /><small className="payora-checkout__pwyw-count">{comments.length} / 500</small>{pwywFieldErrors.comments && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.comments}</small>}</label>}
+          {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
+          <button className="payora-checkout__button payora-checkout__pwyw-pay" type="button" style={{ backgroundColor: buttonColor }} onClick={() => void beginCheckout()} disabled={!amountValid || loading || unavailableModalOpen}>{loading ? <><span className="payora-checkout__spinner" /> Preparing secure checkout…</> : <>{payWhatYouWant.buttonLabel || 'Pay Now'}{amountValid ? ` · ${formatCheckoutAmount(customerAmount, currency)}` : ''}</>}</button>
+          <div className="payora-checkout__trust payora-checkout__pwyw-trust"><span><LockKeyhole size={14} /> Secure one-time payment</span><span>Card details are entered on the next step</span></div>
+          {pwywIntentLocked && error && <p className="payora-checkout__pwyw-hint">This checkout request is saved. Retry without changing the amount or details, or contact the business if the request was rejected.</p>}
+        </section>
+        <div className="payora-checkout__pwyw-powered">Powered by MyPowerly</div>
+      </div>
+      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => void beginCheckout()} loading={loading} />}
+    </div>;
   }
 
   return (
