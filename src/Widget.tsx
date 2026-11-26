@@ -92,6 +92,7 @@ function getPayWhatYouWantSettings(doc: any) {
     collectComments: raw.collect_comments !== false && raw.collectComments !== false,
     buttonLabel: raw.button?.label || raw.buttonLabel || 'Pay What You Want',
     buttonColor: raw.button?.color || raw.buttonColor || '#2B59C3',
+    themeMode: String(raw.theme_mode || raw.themeMode || 'light').toLowerCase() === 'dark' ? 'dark' : 'light',
     supportEmail: raw.support_email || raw.supportEmail || '',
   };
 }
