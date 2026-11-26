@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './apiConfig';
+import type { WidgetNotificationPreference } from './widgetCustomerService';
 
 export type WidgetKind = 'new' | 'legacy';
 
@@ -35,12 +36,11 @@ export interface WidgetPaymentStatus {
   gateway_tx_id?: string | null;
   settlement_status?: string;
   receipt_available?: boolean;
-  receipt_url?: string;
   merchant_display_name?: string;
+  customer_notifications?: WidgetNotificationPreference;
   return_status?: string;
   confirmed_refund_amount?: string;
   review_required?: boolean;
-  customer_notifications?: { status_updates_enabled?: boolean };
   can_start_replacement?: boolean;
   payment_method?: string;
   amount?: string;
@@ -72,6 +72,8 @@ export interface WidgetCheckoutSession {
   collection: WidgetCollectionConfig | null;
   payment: WidgetPaymentStatus | null;
   servicePaymentPlan: Record<string, any> | null;
+  customerNotifications?: WidgetNotificationPreference;
+  merchantDisplayName?: string;
 }
 
 const STORAGE_PREFIX = 'payora.widget-checkout.v1';
@@ -145,6 +147,8 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     collection: row?.collection && typeof row.collection === 'object' ? row.collection : null,
     payment: row?.payment && typeof row.payment === 'object' ? row.payment : null,
     servicePaymentPlan: row?.service_payment_plan && typeof row.service_payment_plan === 'object' ? row.service_payment_plan : null,
+    customerNotifications: row?.customer_notifications,
+    merchantDisplayName: typeof row?.merchant_display_name === 'string' ? row.merchant_display_name : undefined,
   };
 
   if (!session.checkoutId || !session.purchaseId || !session.widgetId

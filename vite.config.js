@@ -34,7 +34,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      input: 'index.html', // ← THIS IS THE KEY
+      input: ['index.html', 'payment-status/index.html'],
     },
     
   },

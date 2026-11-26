@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Building2, CircleHelp, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
 import { CheckoutHeader, CheckoutProgress, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
-import { achReceiptUrl, confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
+import { confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
+import { WidgetEmailOptOut } from './WidgetCheckoutContact';
 import {
   beginCpachargeAchCollection,
   clearCpachargeSubmissionStarted,
@@ -299,9 +300,8 @@ export const CpachargeAchFlow: React.FC<Props> = ({
   };
 
   const shownAmount = formatCheckoutAmount(latestCheckout.amount, latestCheckout.currency);
-  const merchant = (typeof payment?.merchant_display_name === 'string' && payment.merchant_display_name.trim()) || merchantName?.trim();
+  const merchant = payment?.merchant_display_name || latestCheckout.merchantDisplayName || merchantName?.trim();
   const refundAmount = confirmedAchRefund(payment);
-  const receiptUrl = achReceiptUrl(payment);
   const returned = payment?.return_status === 'returned';
   const failed = ['failed', 'cancelled'].includes(currentPaymentStatus);
   const processing = !returned && !failed && payment?.review_required !== true && !refundAmount
@@ -345,7 +345,6 @@ export const CpachargeAchFlow: React.FC<Props> = ({
                   <p>{statusCopy}</p>
                   {(returned || failed) && refundAmount && <p>Confirmed refund: {formatCheckoutAmount(refundAmount, latestCheckout.currency)}.</p>}
                   {attemptExists && <p>Please don’t submit another payment. Keep your payment reference for support.</p>}
-                  {processing && payment?.customer_notifications?.status_updates_enabled === true && <p>We’ll email you when your payment status changes.</p>}
                 </div>
               </div>
             ) : (
@@ -393,7 +392,12 @@ export const CpachargeAchFlow: React.FC<Props> = ({
             {collection && hostedFieldsError && !recoveryRequired && <button className="payora-checkout__text-button" type="button" onClick={() => { setHostedFieldsError(false); setError(''); setHostedFieldsRetry((value) => value + 1); }} disabled={busy}>Retry secure bank fields</button>}
             <div className="payora-checkout__card-assurance"><ShieldCheck size={15} /> No saved bank details. No recurring debit.</div>
             <SupportId value={checkout.purchaseId} />
-            {receiptUrl && <a className="payora-checkout__button payora-checkout__button--subtle" href={receiptUrl} referrerPolicy="no-referrer">View receipt</a>}
+            {recoveryRequired && <WidgetEmailOptOut checkout={latestCheckout} onUpdated={(preference) => {
+              const updated = { ...latestCheckout, customerNotifications: preference, payment: latestCheckout.payment
+                ? { ...latestCheckout.payment, customer_notifications: preference } : null };
+              setLatestCheckout(updated);
+              onCheckoutUpdate(updated);
+            }} />}
           </section>
           <OrderSummary planName={checkout.planName} features={planFeatures} amount={checkout.amount} unitAmount={checkout.unitAmount} quantity={checkout.quantity} currency={checkout.currency} billingText={billingText || 'One-time bank payment'} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={!recoveryRequired ? onChangePlan : undefined} processorLabel="CPACharge" paymentSummaryLabel={recoveryRequired ? processing || refundAmount ? 'Amount submitted' : 'Payment amount' : undefined} />
         </div>

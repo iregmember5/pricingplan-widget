@@ -18,8 +18,9 @@ import {
 import { VaultCollectionFlow } from './VaultCollectionFlow';
 import { CpachargeAchFlow } from './CpachargeAchFlow';
 import { supportsCpachargeAch } from './cpachargeAchService';
-import { achReceiptUrl, confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
+import { confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
 import { ServicePaymentPlanFlow } from './ServicePaymentPlanFlow';
+import { WidgetCheckoutContact, WidgetEmailOptOut } from './WidgetCheckoutContact';
 
 interface PaymentFlowProps {
   widgetId: string;
@@ -142,7 +143,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   onBack,
 }) => {
   const savedPwywIntent = payWhatYouWant ? getSavedPayWhatYouWantIntent(widgetId) : null;
-  const [step, setStep] = useState<'methods' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
+  const [step, setStep] = useState<'methods' | 'contact' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
   const [customerAmount, setCustomerAmount] = useState(savedPwywIntent?.amount || amount || '');
   const [referenceId, setReferenceId] = useState(savedPwywIntent?.referenceId || '');
@@ -167,6 +168,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const [unavailableModalOpen, setUnavailableModalOpen] = useState(false);
   const [confirmedReference, setConfirmedReference] = useState('');
   const starting = useRef(false);
+  const contactPassed = useRef<string | null>(null);
   const autoPwywRecoveryStarted = useRef(false);
   const displayPlanName = checkout?.planName || planName || 'Selected plan';
   const displayPlanPrice = amount ? formatCheckoutAmount(amount, currency) : '';
@@ -208,7 +210,17 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       return;
     }
 
-    if (session.servicePaymentPlan?.status === 'plan_required') {
+    const isPlan = session.servicePaymentPlan?.status === 'plan_required';
+    const readyForPayment = session.status === 'ready' && session.canSubmit
+      && (hasCpachargeAchFlow(session) || hasVaultCollectionFlow(session) || canStartStripePayment(session));
+    if ((isPlan || readyForPayment) && session.purchaseToken && !session.attemptId && !session.payment
+      && !session.customerNotifications?.contact_saved && contactPassed.current !== session.purchaseId) {
+      setBlockedReason('');
+      setStep('contact');
+      return;
+    }
+
+    if (isPlan) {
       setBlockedReason('');
       setStep('plan');
       return;
@@ -220,9 +232,10 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       return;
     }
 
-    if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session)
-      || (hasAchReceipt(session.payment) && !confirmedAchRefund(session.payment)))) {
-      setConfirmedReference(session.attemptId || session.purchaseId);
+    const ach = hasCpachargeAchFlow(session);
+    const confirmed = ach ? hasAchReceipt(session.payment) && !confirmedAchRefund(session.payment) : session.status === 'succeeded';
+    if (confirmed) {
+      setConfirmedReference(String((ach ? session.payment?.transaction_id : null) || session.attemptId || session.purchaseId));
       setStep('success');
       return;
     }
@@ -422,13 +435,24 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     }
   };
 
+  if (checkout && identity && step === 'contact') {
+    return <WidgetCheckoutContact key={checkout.purchaseId} checkout={checkout}
+      onContinue={(preference) => {
+        contactPassed.current = checkout.purchaseId;
+        openSession(identity, preference ? { ...checkout, customerNotifications: preference } : checkout);
+      }}
+      onRefresh={() => {
+        contactPassed.current = checkout.purchaseId;
+        void checkStatus();
+      }} />;
+  }
+
   if (checkout && identity && step === 'plan') {
     return <ServicePaymentPlanFlow identity={identity} checkout={checkout} buyerEmail={email} onBack={() => setStep('methods')} />;
   }
 
   if (step === 'success') {
     const ach = checkout && hasCpachargeAchFlow(checkout);
-    const receiptUrl = ach ? achReceiptUrl(checkout?.payment) : null;
     return (
       <div className="payora-checkout">
         <div className="payora-checkout__container">
@@ -447,7 +471,10 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 {confirmedReference && <div><dt>Payment reference</dt><dd>{confirmedReference}</dd></div>}
               </dl>
               {(checkout?.purchaseId || confirmedReference) && <SupportId value={checkout?.purchaseId || confirmedReference} />}
-              {receiptUrl && <a className="payora-checkout__button payora-checkout__button--subtle" href={receiptUrl} referrerPolicy="no-referrer">View receipt</a>}
+              {checkout && <WidgetEmailOptOut checkout={checkout} onUpdated={(preference) => setCheckout((current) => current ? {
+                ...current, customerNotifications: preference,
+                payment: current.payment ? { ...current.payment, customer_notifications: preference } : null,
+              } : current)} />}
               <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>
                 Return to plans <ArrowRight size={16} />
               </button>
