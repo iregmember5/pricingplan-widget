@@ -217,12 +217,13 @@ type OrderSummaryProps = {
   discountAmount?: string;
   onApplyPromo?: (code: string) => void;
   processorLabel?: string;
+  paymentSummaryLabel?: string;
 };
 
 export function OrderSummary({
   planName, amount, planAmount, unitAmount, currency = 'USD', quantity = 1, features = [], billingText, savingsText, supportEmail,
   onChangePlan, priceError, onRetryPrice, taxAmount, discountAmount, onApplyPromo,
-  processorLabel = 'Stripe',
+  processorLabel = 'Stripe', paymentSummaryLabel,
 }: OrderSummaryProps) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState('');
@@ -257,13 +258,13 @@ export function OrderSummary({
         </ul>}
       </div>
       <div className="payora-checkout__summary-total" aria-live="polite">
-        <div className="payora-checkout__summary-total-label">Total due</div>
+        <div className="payora-checkout__summary-total-label">{paymentSummaryLabel || 'Total due'}</div>
         {hasPrice
           ? <div className="payora-checkout__summary-total-value">{formatCheckoutAmount(shownAmount!, currency)}</div>
           : priceError
             ? <div className="payora-checkout__price-error" role="alert">{priceError}{onRetryPrice && <button type="button" onClick={onRetryPrice}>Retry price</button>}</div>
             : <div className="payora-checkout__price-skeleton" role="status" aria-label="Loading total" />}
-        <p className="payora-checkout__summary-note">{priceConfirmed ? 'Final amount confirmed by the payment service.' : hasPrice ? 'Published plan price; final total confirmed before payment.' : 'Confirming the published offer price…'}</p>
+        {!paymentSummaryLabel && <p className="payora-checkout__summary-note">{priceConfirmed ? 'Final amount confirmed by the payment service.' : hasPrice ? 'Published plan price; final total confirmed before payment.' : 'Confirming the published offer price…'}</p>}
       </div>
       <div className="payora-checkout__line-items" aria-label="Price breakdown">
         <div><span>Plan price{quantity > 1 ? ` × ${quantity}` : ''}</span><strong>{planLine || (hasPrice ? formatCheckoutAmount(shownAmount!, currency) : 'Confirming price…')}</strong></div>
@@ -271,7 +272,9 @@ export function OrderSummary({
         <div><span>Discount</span><strong>{discountAmount ? `−${formatCheckoutAmount(discountAmount, currency)}` : formatCheckoutAmount('0.00', currency)}</strong></div>
         <div className="payora-checkout__line-total"><span>Total</span><strong>{hasPrice ? formatCheckoutAmount(shownAmount!, currency) : '—'}</strong></div>
       </div>
-      <div className="payora-checkout__refund-support">
+      {paymentSummaryLabel ? <div className="payora-checkout__refund-support">
+        {supportEmail ? <a href={`mailto:${supportEmail}`}>Contact support</a> : 'Contact the merchant for support'}
+      </div> : <><div className="payora-checkout__refund-support">
         <div>30-day refund requests</div>
         <div>{supportEmail ? <a href={`mailto:${supportEmail}`}>{supportEmail}</a> : 'Contact the merchant for support'}</div>
       </div>
@@ -285,7 +288,7 @@ export function OrderSummary({
           <button type="submit" disabled={!onApplyPromo || !promoCode.trim()}>Apply</button>
           {!onApplyPromo && <span>Promo codes are not available for this offer.</span>}
         </form>}
-      </div>
+      </div></>}
       <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by {processorLabel}</div>
       </div>
     </aside>

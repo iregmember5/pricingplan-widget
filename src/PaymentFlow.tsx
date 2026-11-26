@@ -18,6 +18,7 @@ import {
 import { VaultCollectionFlow } from './VaultCollectionFlow';
 import { CpachargeAchFlow } from './CpachargeAchFlow';
 import { supportsCpachargeAch } from './cpachargeAchService';
+import { achReceiptUrl, confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
 import { ServicePaymentPlanFlow } from './ServicePaymentPlanFlow';
 
 interface PaymentFlowProps {
@@ -219,7 +220,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       return;
     }
 
-    if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session) || session.payment?.receipt_available === true)) {
+    if (session.status === 'succeeded' && (!hasCpachargeAchFlow(session)
+      || (hasAchReceipt(session.payment) && !confirmedAchRefund(session.payment)))) {
       setConfirmedReference(session.attemptId || session.purchaseId);
       setStep('success');
       return;
@@ -425,6 +427,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   }
 
   if (step === 'success') {
+    const ach = checkout && hasCpachargeAchFlow(checkout);
+    const receiptUrl = ach ? achReceiptUrl(checkout?.payment) : null;
     return (
       <div className="payora-checkout">
         <div className="payora-checkout__container">
@@ -443,11 +447,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 {confirmedReference && <div><dt>Payment reference</dt><dd>{confirmedReference}</dd></div>}
               </dl>
               {(checkout?.purchaseId || confirmedReference) && <SupportId value={checkout?.purchaseId || confirmedReference} />}
+              {receiptUrl && <a className="payora-checkout__button payora-checkout__button--subtle" href={receiptUrl} referrerPolicy="no-referrer">View receipt</a>}
               <button className="payora-checkout__button payora-checkout__button--subtle payora-checkout__success-return" type="button" onClick={onBack}>
                 Return to plans <ArrowRight size={16} />
               </button>
             </section>
-            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout?.amount} planAmount={amount} currency={checkout?.currency || currency} unitAmount={checkout?.unitAmount} quantity={checkout?.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} />
+            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout?.amount} planAmount={amount} currency={checkout?.currency || currency} unitAmount={checkout?.unitAmount} quantity={checkout?.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} paymentSummaryLabel={ach ? 'Amount confirmed' : undefined} processorLabel={ach ? 'CPACharge' : undefined} />
           </div>
           <div className="payora-checkout__footer">Your confirmation is based on the payment service’s verified status.</div>
         </div>
@@ -481,6 +486,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       <CpachargeAchFlow
         identity={identity}
         checkout={checkout}
+        merchantName={payWhatYouWant?.businessName}
         planFeatures={planFeatures}
         billingText={billingText}
         savingsText={savingsText}

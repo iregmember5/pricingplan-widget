@@ -81,6 +81,24 @@ The frontend submits at most once from a checkout attempt. A lost response is re
 
 `processing`, `submitting`, `uncertain`, `requires_action`, `failed`, and `cancelled` remain distinct statuses. A browser redirect, HTTP success, or top-level API `success` flag alone does not confirm payment.
 
+## Widget ACH status and notifications
+
+Use the same customer-facing payment fields in the `POST /v1/api/payments/purchase-payments/` response's `data` and the `POST /v1/api/payments/widget-checkouts/status/` response's `data.payment`. Preserve the original purchase and attempt IDs after refresh. The initial response drives the screen immediately, even before a status refresh.
+
+| Verified result | Response fields | Customer display |
+| --- | --- | --- |
+| Submitted or authorized | `status: "processing"`, `amount`, `currency`, `receipt_available: false` | Show “Your bank payment is processing,” the amount submitted, a support reference, and Check payment status. |
+| Submission outcome unknown | `status: "uncertain"` or an ambiguous request error | Check the original payment. Keep payment submission locked. |
+| Payment confirmed | `status: "succeeded"`, `receipt_available: true`, and optionally `receipt_url` | Confirm payment. Show View receipt only if a scoped HTTPS receipt URL on the MyPowerly API origin is issued. |
+| Failed, returned, or needs review | `status: "failed"` or `"cancelled"`, `return_status: "returned"`, or `review_required: true` | Show the applicable outcome and offer status or merchant support. |
+| Refund confirmed | Positive decimal string in `confirmed_refund_amount` | Show the confirmed refund amount separately from the original payment. |
+
+Include `merchant_display_name` when available. The widget uses “several business days” while processing. A shorter estimate needs an account-specific, verified backend contract.
+
+For errors, return a stable machine-readable code, customer-safe message, and a support reference. If a future response offers retry or replacement, specify the exact action and the original purchase it applies to. A network error, generic 503, or missing attempt in one status lookup is insufficient to unlock a payment.
+
+**Backend work for email updates:** Save a widget customer's email and enabled preference on the checkout. Queue initial processing, confirmed payment/receipt, failure or return, and confirmed refund notifications from verified lifecycle events. Deliver through the existing notification worker and deduplicate per checkout, recipient, and event. Include amount, merchant, reference, and a MyPowerly-issued secure status link. Reconcile after the browser closes. Set `customer_notifications.status_updates_enabled: true` in both responses only when the recipient is saved and this notification flow is active. Keep merchant deposit and funds availability separate from the customer receipt.
+
 ## Release and test boundary
 
 Do not perform a production checkout until backend operations confirm the deployed W1 revision, widget policy, Stripe account/configuration, limits, lifetimes, and an authorized sandbox path. A successful OPTIONS/CORS check does not establish that POST configuration or payment execution is enabled. No checkout creation or charge POST was used during frontend validation.

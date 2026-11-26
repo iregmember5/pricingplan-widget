@@ -1,5 +1,5 @@
 import { API_BASE_URL } from './apiConfig';
-import type { WidgetCheckoutSession } from './widgetCheckoutService';
+import type { WidgetCheckoutSession, WidgetPaymentStatus } from './widgetCheckoutService';
 
 export interface CpachargeAchCollection {
   collection_id: string;
@@ -18,7 +18,7 @@ export interface CpachargeAchCollection {
   submitted: boolean;
 }
 
-export interface CpachargeAchCharge {
+export interface CpachargeAchCharge extends WidgetPaymentStatus {
   purchase_id: string;
   attempt_id: string | null;
   transaction_id: string | number | null;
@@ -169,6 +169,12 @@ export async function submitCpachargeAchPayment(
     payment_method: result.payment_method === 'ach' ? 'ach' : undefined,
     settlement_status: typeof result.settlement_status === 'string' ? result.settlement_status : undefined,
     receipt_available: result.receipt_available === true,
+    receipt_url: typeof result.receipt_url === 'string' ? result.receipt_url : undefined,
+    merchant_display_name: typeof result.merchant_display_name === 'string' ? result.merchant_display_name : undefined,
+    return_status: typeof result.return_status === 'string' ? result.return_status : undefined,
+    confirmed_refund_amount: typeof result.confirmed_refund_amount === 'string' ? result.confirmed_refund_amount : undefined,
+    review_required: result.review_required === true,
+    customer_notifications: { status_updates_enabled: result.customer_notifications?.status_updates_enabled === true },
     can_start_replacement: result.can_start_replacement === true,
   } satisfies CpachargeAchCharge;
 }

@@ -35,6 +35,12 @@ export interface WidgetPaymentStatus {
   gateway_tx_id?: string | null;
   settlement_status?: string;
   receipt_available?: boolean;
+  receipt_url?: string;
+  merchant_display_name?: string;
+  return_status?: string;
+  confirmed_refund_amount?: string;
+  review_required?: boolean;
+  customer_notifications?: { status_updates_enabled?: boolean };
   can_start_replacement?: boolean;
   payment_method?: string;
   amount?: string;

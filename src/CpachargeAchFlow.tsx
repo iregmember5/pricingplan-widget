@@ -1,13 +1,13 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Building2, CircleHelp, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
-import { CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
+import { CheckoutHeader, CheckoutProgress, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
+import { achReceiptUrl, confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
 import {
   beginCpachargeAchCollection,
   clearCpachargeSubmissionStarted,
   hasCpachargeSubmissionStarted,
   markCpachargeSubmissionStarted,
   submitCpachargeAchPayment,
-  type CpachargeAchCharge,
   type CpachargeAchCollection,
 } from './cpachargeAchService';
 import { getWidgetCheckoutStatus, type WidgetCheckoutIdentity, type WidgetCheckoutSession } from './widgetCheckoutService';
@@ -73,6 +73,7 @@ type Props = {
   billingText?: string;
   savingsText?: string;
   supportEmail?: string;
+  merchantName?: string;
   onCheckoutUpdate: (checkout: WidgetCheckoutSession) => void;
   onSuccess: (reference: string, checkout: WidgetCheckoutSession) => void;
   onBack: () => void;
@@ -85,7 +86,7 @@ function safeApiMessage(error: unknown) {
 }
 
 export const CpachargeAchFlow: React.FC<Props> = ({
-  identity, checkout, planFeatures = [], billingText, savingsText, supportEmail,
+  identity, checkout, planFeatures = [], billingText, savingsText, supportEmail, merchantName,
   onCheckoutUpdate, onSuccess, onBack, onChangePlan,
 }) => {
   const fieldId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -96,7 +97,6 @@ export const CpachargeAchFlow: React.FC<Props> = ({
   const [collection, setCollection] = useState<CpachargeAchCollection | null>(null);
   const [collectionExpired, setCollectionExpired] = useState(false);
   const [latestCheckout, setLatestCheckout] = useState(checkout);
-  const [charge, setCharge] = useState<CpachargeAchCharge | null>(null);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [hostedFieldsReady, setHostedFieldsReady] = useState(false);
@@ -111,9 +111,8 @@ export const CpachargeAchFlow: React.FC<Props> = ({
   const [consent, setConsent] = useState(false);
   const [submissionLocked, setSubmissionLocked] = useState(() => hasCpachargeSubmissionStarted(checkout.purchaseId));
   const [recoveryOnly, setRecoveryOnly] = useState(() => hasCpachargeSubmissionStarted(checkout.purchaseId));
-  const [unavailableOpen, setUnavailableOpen] = useState(false);
-
-  const currentPaymentStatus = charge?.status || latestCheckout.payment?.status || latestCheckout.status;
+  const payment = latestCheckout.payment;
+  const currentPaymentStatus = payment?.status || latestCheckout.status;
   const attemptExists = Boolean(submissionLocked || latestCheckout.attemptId || checkout.attemptId || latestCheckout.payment
     || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded', 'failed', 'cancelled'].includes(latestCheckout.status));
   const recoveryRequired = Boolean(attemptExists || recoveryOnly || latestCheckout.status !== 'ready' || checkout.status !== 'ready');
@@ -124,6 +123,7 @@ export const CpachargeAchFlow: React.FC<Props> = ({
 
   const refreshOriginalStatus = async () => {
     const updated = await getWidgetCheckoutStatus(identity);
+    if (updated.purchaseId !== checkout.purchaseId) throw new Error('The received status was for a different checkout.');
     setLatestCheckout(updated);
     onCheckoutUpdate(updated);
     const attemptRecorded = Boolean(updated.attemptId || updated.payment
@@ -133,8 +133,7 @@ export const CpachargeAchFlow: React.FC<Props> = ({
       try { markCpachargeSubmissionStarted(checkout.purchaseId); } catch { /* Recovery remains in-memory for this page. */ }
     }
     if (updated.status !== 'ready') setRecoveryOnly(true);
-    const receiptConfirmed = updated.payment?.status === 'succeeded' && updated.payment.receipt_available === true;
-    if (receiptConfirmed) {
+    if (hasAchReceipt(updated.payment) && !confirmedAchRefund(updated.payment)) {
       clearCpachargeSubmissionStarted(checkout.purchaseId);
       onSuccess(String(updated.payment?.transaction_id || updated.attemptId || updated.purchaseId), updated);
     }
@@ -147,10 +146,10 @@ export const CpachargeAchFlow: React.FC<Props> = ({
     try {
       const updated = await refreshOriginalStatus();
       if (updated.status === 'ready' && !updated.attemptId && !updated.payment && submissionLocked) {
-        setError('The payment service has not recorded an attempt yet. For safety, this checkout is locked after submission began. Contact support with your Support ID before proceeding.');
+        setError('We couldn’t confirm whether your payment was received. Contact the merchant with your payment reference before trying again.');
       }
-    } catch (err) {
-      setError(safeApiMessage(err));
+    } catch {
+      setError('We couldn’t refresh the payment status. Check the same payment again or contact support with your reference.');
     } finally { setBusy(false); }
   };
 
@@ -167,7 +166,7 @@ export const CpachargeAchFlow: React.FC<Props> = ({
         await refreshOriginalStatus();
       }
     } catch (err) {
-      setError(safeApiMessage(err));
+      setError('We couldn’t prepare the secure bank form. Try bank setup again or contact support with your reference.');
     } finally { setInitializing(false); }
   };
 
@@ -274,58 +273,80 @@ export const CpachargeAchFlow: React.FC<Props> = ({
       catch { throw new Error('This browser cannot safely protect the payment attempt. No debit was submitted. Use a regular browser tab or contact support.'); }
       setSubmissionLocked(true);
       setRecoveryOnly(true);
-      let result: CpachargeAchCharge;
+      let result;
       try {
         result = await submitCpachargeAchPayment(latestCheckout, collection, providerToken);
-      } catch (err) {
-        await refreshOriginalStatus().catch(() => undefined);
-        throw err;
+      } catch {
+        const recovered = await refreshOriginalStatus().catch(() => undefined);
+        if (!recovered?.payment && !recovered?.attemptId) {
+          setError('We couldn’t confirm whether your payment was received. Check the original payment status or contact support with your reference.');
+        }
+        return;
       }
-      setCharge(result);
-      if (result.attempt_id || result.status !== 'ready') {
-        setLatestCheckout((previous) => ({ ...previous, status: result.status, attemptId: result.attempt_id || previous.attemptId }));
-      }
-      if (result.status === 'succeeded' && result.receipt_available === true) {
-        onSuccess(String(result.transaction_id || result.attempt_id || result.purchase_id), latestCheckout);
+      const updated = { ...latestCheckout, payment: result, status: result.status, attemptId: result.attempt_id || latestCheckout.attemptId, canSubmit: false };
+      setLatestCheckout(updated);
+      onCheckoutUpdate(updated);
+      if (hasAchReceipt(result) && !confirmedAchRefund(result)) {
+        clearCpachargeSubmissionStarted(checkout.purchaseId);
+        onSuccess(String(result.transaction_id || result.attempt_id || result.purchase_id), updated);
       }
     } catch (err) {
       setError(safeApiMessage(err));
-      if ((err as any)?.status >= 500 || (err as any)?.status === 0) setUnavailableOpen(true);
     } finally {
       inFlightRef.current = false;
       setBusy(false);
     }
   };
 
-  const pendingCopy = currentPaymentStatus === 'uncertain'
-    ? 'We’re checking the original bank payment. Please don’t submit another payment.'
-    : currentPaymentStatus === 'failed' || currentPaymentStatus === 'cancelled'
-      ? 'This bank payment did not complete. This purchase cannot be submitted again; contact the merchant for help.'
-      : currentPaymentStatus === 'succeeded' && latestCheckout.payment?.receipt_available !== true
-        ? 'Your bank payment is still awaiting confirmed settlement. No paid receipt is available.'
-        : ['submitting', 'processing', 'succeeded'].includes(currentPaymentStatus)
-          ? 'Your bank debit was submitted for processing. Settlement is not confirmed, so no paid receipt is available.'
-          : 'This checkout cannot accept a bank payment right now. Check its status or contact the merchant.';
+  const shownAmount = formatCheckoutAmount(latestCheckout.amount, latestCheckout.currency);
+  const merchant = (typeof payment?.merchant_display_name === 'string' && payment.merchant_display_name.trim()) || merchantName?.trim();
+  const refundAmount = confirmedAchRefund(payment);
+  const receiptUrl = achReceiptUrl(payment);
+  const returned = payment?.return_status === 'returned';
+  const failed = ['failed', 'cancelled'].includes(currentPaymentStatus);
+  const processing = !returned && !failed && payment?.review_required !== true && !refundAmount
+    && (currentPaymentStatus === 'processing' || currentPaymentStatus === 'succeeded' && !hasAchReceipt(payment));
+  let statusTitle = attemptExists ? 'We’re checking your bank payment' : 'Bank checkout unavailable';
+  let statusCopy = attemptExists ? 'We’re checking the original payment. Check its status or contact the merchant for help.'
+    : 'Refresh to check whether this checkout is available, or contact the merchant.';
+  if (processing) {
+    statusTitle = 'Your bank payment is processing';
+    statusCopy = `Your ${shownAmount} payment request${merchant ? ` to ${merchant}` : ''} was received. Bank payments can take several business days to complete.`;
+  } else if (returned || failed) {
+    statusTitle = returned ? 'Your bank payment was returned' : currentPaymentStatus === 'cancelled' ? 'Your bank payment was cancelled' : 'Your bank payment didn’t complete';
+    statusCopy = 'Contact the merchant with your payment reference for help with the next step.';
+  } else if (refundAmount) {
+    statusTitle = 'Refund confirmed';
+    statusCopy = `A refund of ${formatCheckoutAmount(refundAmount, latestCheckout.currency)} was confirmed for this payment.`;
+  } else if (payment?.review_required === true) {
+    statusTitle = 'Your bank payment needs review';
+    statusCopy = 'Contact the merchant with your payment reference for an update.';
+  }
 
   return (
     <div className="payora-checkout payora-checkout--payment payora-checkout--ach">
       <div className="payora-checkout__container">
         <CheckoutHeader />
-        <CheckoutProgress active={2} />
+        <CheckoutProgress active={processing || returned || failed || refundAmount ? 3 : 2} />
         <div className="payora-checkout__grid">
           <section className="payora-checkout__main">
             <button className="payora-checkout__back" type="button" onClick={recoveryRequired ? recover : onBack} disabled={busy}>
-              {recoveryRequired ? <RefreshCw size={15} /> : <ArrowLeft size={15} />} {recoveryRequired ? 'Check payment status' : 'Back to review'}
+              {recoveryRequired ? <RefreshCw size={15} /> : <ArrowLeft size={15} />} {recoveryRequired ? (busy ? 'Checking payment status…' : 'Check payment status') : 'Back to review'}
             </button>
             <div className="payora-checkout__eyebrow">One-time bank payment{checkout.collection?.environment === 'sandbox' ? ' · Sandbox' : ''}</div>
-            <h1 className="payora-checkout__title">Pay {formatCheckoutAmount(latestCheckout.amount, latestCheckout.currency)}</h1>
-            <p className="payora-checkout__description">Use your bank account for this one-time payment. Your bank details stay in secure hosted fields.</p>
-            {error && !unavailableOpen && <div className="payora-checkout__alert" role="alert">{error}</div>}
+            <h1 className="payora-checkout__title">{recoveryRequired ? statusTitle : `Pay ${shownAmount}`}</h1>
+            {!recoveryRequired && <p className="payora-checkout__description">Use your bank account for this one-time payment. Your bank details stay in secure hosted fields.</p>}
+            {error && <div className="payora-checkout__alert" role="alert">{error}</div>}
 
             {recoveryRequired ? (
               <div className="payora-ach__status" role="status" aria-live="polite">
                 <span className="payora-ach__status-icon"><CircleHelp size={20} /></span>
-                <div><strong>{attemptExists ? (currentPaymentStatus === 'failed' || currentPaymentStatus === 'cancelled' ? 'Payment not completed' : 'Bank payment status') : 'Checkout unavailable'}</strong><p>{pendingCopy}</p></div>
+                <div>
+                  <p>{statusCopy}</p>
+                  {(returned || failed) && refundAmount && <p>Confirmed refund: {formatCheckoutAmount(refundAmount, latestCheckout.currency)}.</p>}
+                  {attemptExists && <p>Please don’t submit another payment. Keep your payment reference for support.</p>}
+                  {processing && payment?.customer_notifications?.status_updates_enabled === true && <p>We’ll email you when your payment status changes.</p>}
+                </div>
               </div>
             ) : (
               <>
@@ -372,11 +393,11 @@ export const CpachargeAchFlow: React.FC<Props> = ({
             {collection && hostedFieldsError && !recoveryRequired && <button className="payora-checkout__text-button" type="button" onClick={() => { setHostedFieldsError(false); setError(''); setHostedFieldsRetry((value) => value + 1); }} disabled={busy}>Retry secure bank fields</button>}
             <div className="payora-checkout__card-assurance"><ShieldCheck size={15} /> No saved bank details. No recurring debit.</div>
             <SupportId value={checkout.purchaseId} />
+            {receiptUrl && <a className="payora-checkout__button payora-checkout__button--subtle" href={receiptUrl} referrerPolicy="no-referrer">View receipt</a>}
           </section>
-          <OrderSummary planName={checkout.planName} features={planFeatures} amount={checkout.amount} unitAmount={checkout.unitAmount} quantity={checkout.quantity} currency={checkout.currency} billingText={billingText || 'One-time bank payment'} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={!recoveryRequired ? onChangePlan : undefined} processorLabel="CPACharge" />
+          <OrderSummary planName={checkout.planName} features={planFeatures} amount={checkout.amount} unitAmount={checkout.unitAmount} quantity={checkout.quantity} currency={checkout.currency} billingText={billingText || 'One-time bank payment'} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={!recoveryRequired ? onChangePlan : undefined} processorLabel="CPACharge" paymentSummaryLabel={recoveryRequired ? processing || refundAmount ? 'Amount submitted' : 'Payment amount' : undefined} />
         </div>
       </div>
-      {unavailableOpen && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={checkout.planName} paymentMayHaveBeenSubmitted={attemptExists} onClose={() => setUnavailableOpen(false)} onRetry={recoveryRequired ? recover : prepareCollection} loading={busy} />}
     </div>
   );
 };
