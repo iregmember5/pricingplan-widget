@@ -232,7 +232,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     }
 
     if (hasCpachargeAchFlow(session)) {
-      if (!session.canSubmit || !session.purchaseToken || !session.idempotencyKey) {
+      if (!session.attemptId && !session.payment && (!session.canSubmit || !session.purchaseToken || !session.idempotencyKey)) {
         setBlockedReason('This checkout is not authorized for bank payment. No debit was submitted. Contact the merchant.');
         setStep('status');
         return;
@@ -368,45 +368,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setError('');
     try {
       const updated = await getWidgetCheckoutStatus(identity);
-      setUnavailableModalOpen(false);
-      setCheckout(updated);
-      if (updated.status === 'expired') {
-        setBlockedReason(updated.attemptId || updated.payment
-          ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
-          : statusMessage('expired'));
-        setStep('status');
-      } else if (updated.status === 'offer_changed' || updated.status === 'offer_unavailable') {
-        setBlockedReason(statusMessage(updated.status));
-        setStep('status');
-      } else if (updated.servicePaymentPlan?.status === 'plan_required') {
-        setBlockedReason('');
-        setStep('plan');
-      } else if (updated.status === 'succeeded' && updated.collection?.flow === 'vault_to_moov') {
-        setBlockedReason('');
-        setStep('vault');
-      } else if (updated.status === 'succeeded' && (!hasCpachargeAchFlow(updated) || updated.payment?.receipt_available === true)) {
-        setConfirmedReference(updated.attemptId || updated.purchaseId);
-        setStep('success');
-      } else if (hasCpachargeAchFlow(updated)) {
-        setBlockedReason('');
-        setStep('ach');
-      } else if (hasVaultCollectionFlow(updated)) {
-        setBlockedReason('');
-        setStep('vault');
-      } else if (updated.status !== 'ready' && hasStripeCollection(updated)) {
-        setBlockedReason('');
-        setStep('stripe');
-      } else if (canStartStripePayment(updated)) {
-        setBlockedReason('');
-        setStep('stripe');
-      } else if (hasVaultCollectionFlow(updated) && updated.status === 'ready' && updated.canSubmit) {
-        setBlockedReason('');
-        setStep('vault');
-      } else {
-        setBlockedReason(updated.status === 'ready' && !updated.canSubmit
-          ? statusMessage(updated.status)
-          : 'A supported payment method is not configured for this checkout. No payment was submitted. Contact the merchant.');
-      }
+      openSession(identity, updated);
     } catch (err: any) {
       const message = err?.message || 'We could not confirm the original checkout status. Do not create another checkout.';
       setError(message);
@@ -574,7 +536,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             <section className="payora-checkout__main">
               {!payWhatYouWant && <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>}
               <div className="payora-checkout__eyebrow">Checkout update</div>
-              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : offerNeedsRestart ? 'Payment page updated' : 'We’re checking your payment'}</h1>
+              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : offerNeedsRestart ? 'Payment page updated' : paymentMayHaveBeenSubmitted ? 'We’re checking your payment' : 'Checkout unavailable'}</h1>
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
               <SupportId value={checkout.purchaseId} />
@@ -597,7 +559,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 ? 'The previous checkout will not be charged. Reloading clears its unused request and fetches the latest published payment page.'
                 : checkout.status === 'expired' && !checkout.attemptId && !checkout.payment
                 ? 'Your previous checkout remains saved for reference. Starting again creates a new secure checkout at the current price and payment settings.'
-                : 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'}</p>
+                : paymentMayHaveBeenSubmitted ? 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'
+                : 'Refresh to check whether this checkout is available, or contact the merchant for help.'}</p>
             </section>
             <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={onBack} />
           </div>
@@ -646,7 +609,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           </div>
           {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
           <button className="payora-checkout__button payora-checkout__pwyw-pay" type="button" style={{ backgroundColor: buttonColor }} onClick={() => void beginCheckout()} disabled={!amountValid || loading || unavailableModalOpen}>{loading ? <><span className="payora-checkout__spinner" /> Preparing secure checkout…</> : <>{payWhatYouWant.buttonLabel || 'Pay Now'}{amountValid ? ` · ${formatCheckoutAmount(customerAmount, currency)}` : ''}</>}</button>
-          <div className="payora-checkout__trust payora-checkout__pwyw-trust"><span><LockKeyhole size={14} /> Secure one-time payment</span><span>Card details are entered on the next step</span></div>
+          <div className="payora-checkout__trust payora-checkout__pwyw-trust"><span><LockKeyhole size={14} /> Secure one-time payment</span><span>Enter your payment details on the next step</span></div>
           {pwywIntentLocked && error && <p className="payora-checkout__pwyw-hint">This checkout request is saved. Retry without changing the amount or details, or contact the business if the request was rejected.</p>}
           {payWhatYouWant.supportEmail && <footer className="payora-checkout__pwyw-help">Need help? <a href={`mailto:${payWhatYouWant.supportEmail}`}>{payWhatYouWant.supportEmail}</a></footer>}
         </section>
