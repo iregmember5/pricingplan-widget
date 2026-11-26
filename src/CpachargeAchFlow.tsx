@@ -243,15 +243,16 @@ export const CpachargeAchFlow: React.FC<Props> = ({
     setBusy(true);
     setError('');
     try {
-      const providerFormData: Record<string, string> = {
-        ...collection.form_data,
-        account_holder_type: holderType,
-        account_type: accountType,
+      const providerFormData: Record<string, string> = { ...collection.form_data };
+      const addIfMissing = (key: string, value: string) => {
+        if (!Object.prototype.hasOwnProperty.call(providerFormData, key)) providerFormData[key] = value;
       };
-      if (holderType === 'business') providerFormData.name = businessName.trim();
+      addIfMissing('account_holder_type', holderType);
+      addIfMissing('account_type', accountType);
+      if (holderType === 'business') addIfMissing('name', businessName.trim());
       else {
-        providerFormData.given_name = givenName.trim();
-        providerFormData.surname = surname.trim();
+        addIfMissing('given_name', givenName.trim());
+        addIfMissing('surname', surname.trim());
       }
 
       let tokenResult: { id?: unknown };
@@ -262,6 +263,10 @@ export const CpachargeAchFlow: React.FC<Props> = ({
       }
       const providerToken = typeof tokenResult?.id === 'string' ? tokenResult.id : '';
       if (!providerToken) throw new Error('The bank provider did not return a payment token. No debit was submitted.');
+      if (Date.parse(collection.expires_at) <= Date.now()) {
+        setCollectionExpired(true);
+        throw new Error('This secure bank form expired before payment could be submitted.');
+      }
 
       // A boolean session marker fences refresh/double-click recovery. It is set
       // immediately before the one financial POST; the provider token is never stored.
@@ -312,7 +317,7 @@ export const CpachargeAchFlow: React.FC<Props> = ({
             <button className="payora-checkout__back" type="button" onClick={recoveryRequired ? recover : onBack} disabled={busy}>
               {recoveryRequired ? <RefreshCw size={15} /> : <ArrowLeft size={15} />} {recoveryRequired ? 'Check payment status' : 'Back to review'}
             </button>
-            <div className="payora-checkout__eyebrow">One-time bank payment · Sandbox</div>
+            <div className="payora-checkout__eyebrow">One-time bank payment{checkout.collection?.environment === 'sandbox' ? ' · Sandbox' : ''}</div>
             <h1 className="payora-checkout__title">Pay {formatCheckoutAmount(latestCheckout.amount, latestCheckout.currency)}</h1>
             <p className="payora-checkout__description">Use your bank account for this one-time payment. Your bank details stay in secure hosted fields.</p>
             {error && !unavailableOpen && <div className="payora-checkout__alert" role="alert">{error}</div>}
