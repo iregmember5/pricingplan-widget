@@ -7,9 +7,9 @@ export interface CpachargeAchCollection {
   provider: 'cpacharge';
   payment_method: 'ach';
   flow: 'hosted_bank_token';
-  environment: 'sandbox';
+  environment: 'sandbox' | 'live';
   public_key: string;
-  form_data: { mypowerly_collection_id: string } & Record<string, string>;
+  form_data: Record<string, string>;
   authorization_version: string;
   authorization_text: string;
   amount: string;
@@ -73,12 +73,14 @@ export function supportsCpachargeAch(checkout: WidgetCheckoutSession) {
     && collection.gateway === 'cpacharge'
     && collection.payment_method === 'ach'
     && collection.flow === 'hosted_bank_token'
-    && collection.environment === 'sandbox'
+    && (collection.environment === 'sandbox' || collection.environment === 'live')
     && checkout.currency === 'USD';
 }
 
 function hasExpectedBeginEndpoint(value: unknown) {
-  if (typeof value !== 'string' || !value) return false;
+  if (value == null || value === '') return true;
+  if (typeof value !== 'string') return false;
+  if (value === 'ach-collections/' || value === '/api/payments/ach-collections/') return true;
   try {
     const apiRoot = new URL(API_BASE_URL);
     const expected = new URL(`${API_BASE_URL}/payments/ach-collections/`);
@@ -90,14 +92,14 @@ function hasExpectedBeginEndpoint(value: unknown) {
 export async function beginCpachargeAchCollection(checkout: WidgetCheckoutSession): Promise<CpachargeAchCollection> {
   if (!supportsCpachargeAch(checkout) || !hasExpectedBeginEndpoint(checkout.collection?.begin_endpoint)
     || !checkout.canSubmit || checkout.status !== 'ready') {
-    throw new Error('This checkout is not authorized for sandbox bank payment. No debit was submitted.');
+    throw new Error('The backend has not authorized CPACharge bank payment for this checkout. No debit was submitted.');
   }
   const data = await postApi<any>('ach-collections/', purchaseProof(checkout));
   const collectionId = typeof data?.collection_id === 'string' ? data.collection_id : '';
   const formData = data?.form_data;
   if (!collectionId || data?.purchase_id !== checkout.purchaseId
     || data?.provider !== 'cpacharge' || data?.payment_method !== 'ach'
-    || data?.flow !== 'hosted_bank_token' || data?.environment !== 'sandbox'
+    || data?.flow !== 'hosted_bank_token' || data?.environment !== checkout.collection?.environment
     || typeof data?.public_key !== 'string' || !data.public_key
     || !formData || typeof formData !== 'object'
     || formData.mypowerly_collection_id !== collectionId
@@ -114,9 +116,10 @@ export async function beginCpachargeAchCollection(checkout: WidgetCheckoutSessio
     provider: 'cpacharge',
     payment_method: 'ach',
     flow: 'hosted_bank_token',
-    environment: 'sandbox',
+    environment: data.environment,
     public_key: data.public_key,
-    form_data: { ...formData, mypowerly_collection_id: collectionId },
+    // Keep backend-issued provider field names and values unchanged.
+    form_data: { ...formData },
     authorization_version: data.authorization_version,
     authorization_text: data.authorization_text,
     amount: String(data.amount),
@@ -133,10 +136,13 @@ export async function submitCpachargeAchPayment(
 ) {
   if (!supportsCpachargeAch(checkout) || checkout.status !== 'ready' || !checkout.canSubmit
     || collection.purchase_id !== checkout.purchaseId || collection.submitted
+    || collection.environment !== checkout.collection?.environment
+    || collection.amount !== checkout.amount || collection.currency !== checkout.currency
+    || !(Date.parse(collection.expires_at) > Date.now())
     || !providerToken || !checkout.purchaseToken || !checkout.idempotencyKey) {
     throw new Error('This bank payment is not ready to submit. Recover the original checkout before taking another action.');
   }
-  const result = await postApi<any>('router/charge/', {
+  const result = await postApi<any>('purchase-payments/', {
     ...purchaseProof(checkout),
     idempotency_key: checkout.idempotencyKey,
     target_gateway: 'cpacharge',
