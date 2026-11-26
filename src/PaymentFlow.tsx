@@ -39,6 +39,7 @@ interface PaymentFlowProps {
   payWhatYouWant?: {
     businessName?: string; logoUrl?: string; title?: string; description?: string;
     currency?: string; suggestedAmount?: string; supportEmail?: string;
+    themeMode?: 'light' | 'dark';
     currencyMinorDigits?: number;
     minimumAmount?: string | null; maximumAmount?: string | null;
     collectReferenceId?: boolean; collectComments?: boolean;
@@ -610,26 +611,46 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     const minorDigits = Math.max(0, Math.min(4, Number(payWhatYouWant.currencyMinorDigits ?? 2)));
     const amountValid = matchesCurrencyPrecision(customerAmount.trim(), minorDigits) && Number(customerAmount) > 0;
     const buttonColor = /^#[0-9a-f]{6}$/i.test(payWhatYouWant.buttonColor || '') ? payWhatYouWant.buttonColor : '#2456a6';
-    return <div className={`payora-checkout payora-checkout--pwyw${isEmbedMode() ? ' is-embedded' : ''}`}>
+    const themeMode = payWhatYouWant.themeMode === 'dark' ? 'dark' : 'light';
+    const minimum = Number(payWhatYouWant.minimumAmount || 0);
+    const maximum = payWhatYouWant.maximumAmount == null || payWhatYouWant.maximumAmount === '' ? Number.POSITIVE_INFINITY : Number(payWhatYouWant.maximumAmount);
+    const suggestedAmount = Number(payWhatYouWant.suggestedAmount || 0);
+    const quickAmounts = suggestedAmount > 0
+      ? Array.from(new Set([25, 50, 100, suggestedAmount]))
+        .filter((value) => Number.isFinite(value) && value > 0 && value >= minimum && value <= maximum)
+        .slice(0, 4)
+      : [];
+    const initials = (payWhatYouWant.businessName || 'Business').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+    return <div className={`payora-checkout payora-checkout--pwyw theme-${themeMode}${isEmbedMode() ? ' is-embedded' : ''}`}>
       <div className="payora-checkout__pwyw-shell">
         <section className="payora-checkout__pwyw-card">
-          <div className="payora-checkout__pwyw-business">{payWhatYouWant.logoUrl && <img src={payWhatYouWant.logoUrl} alt="" />}{payWhatYouWant.businessName || 'Secure payment'}</div>
-          <div className="payora-checkout__eyebrow">One-time payment</div>
-          <h1 className="payora-checkout__title">{payWhatYouWant.title || 'Pay What You Want'}</h1>
-          {payWhatYouWant.description && <p className="payora-checkout__description">{payWhatYouWant.description}</p>}
-          <label className="payora-checkout__field"><span>Amount <strong aria-hidden="true">*</strong></span>
-            <span className="payora-checkout__pwyw-amount"><span>{currency === 'CAD' ? 'CA$' : '$'}</span><input aria-label={`Amount in ${currency}`} inputMode="decimal" autoComplete="off" value={customerAmount} onChange={(event) => { setCustomerAmount(event.target.value); setError(''); setPwywFieldErrors((current) => ({ ...current, amount_minor: '' })); }} disabled={pwywIntentLocked || loading} placeholder="0.00" /><span className="payora-checkout__pwyw-currency">{currency}</span></span>
+          <header className="payora-checkout__pwyw-header">
+            <div className="payora-checkout__pwyw-avatar">
+              {payWhatYouWant.logoUrl && <img src={payWhatYouWant.logoUrl} alt={`${payWhatYouWant.businessName || 'Business'} logo`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />}
+              <span aria-hidden="true">{initials}</span>
+            </div>
+            <div className="payora-checkout__pwyw-business">{payWhatYouWant.businessName || 'Secure payment'}</div>
+            <h1 className="payora-checkout__title">{payWhatYouWant.title || 'Pay What You Want'}</h1>
+            <p className="payora-checkout__description">{payWhatYouWant.description || 'Choose an amount and pay securely in a few taps.'}</p>
+          </header>
+          <label className="payora-checkout__field payora-checkout__pwyw-amount-field"><span className="sr-only">Amount <strong aria-hidden="true">*</strong></span>
+            <span className="payora-checkout__pwyw-amount"><span className="payora-checkout__pwyw-symbol">{currency === 'CAD' ? 'CA$' : '$'}</span><input aria-label={`Amount in ${currency}`} inputMode="decimal" autoComplete="off" value={customerAmount} onChange={(event) => { setCustomerAmount(event.target.value); setError(''); setPwywFieldErrors((current) => ({ ...current, amount_minor: '' })); }} disabled={pwywIntentLocked || loading} placeholder="0" /><span className="payora-checkout__pwyw-currency">{currency}</span></span>
           </label>
+          {quickAmounts.length > 0 && <div className="payora-checkout__pwyw-quick-amounts" aria-label="Suggested amounts">{quickAmounts.map((value) => <button key={value} type="button" disabled={pwywIntentLocked || loading} aria-pressed={Number(customerAmount) === value} onClick={() => { setCustomerAmount(String(value)); setError(''); setPwywFieldErrors((current) => ({ ...current, amount_minor: '' })); }}>{new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value)}</button>)}</div>}
+          <p className="payora-checkout__pwyw-entry-hint">Enter any amount</p>
           {pwywFieldErrors.amount_minor && <p className="payora-checkout__field-error" role="alert">{pwywFieldErrors.amount_minor}</p>}
           {(payWhatYouWant.minimumAmount || payWhatYouWant.maximumAmount) && <p className="payora-checkout__pwyw-hint">{payWhatYouWant.minimumAmount ? `Minimum ${formatCheckoutAmount(payWhatYouWant.minimumAmount, currency)}` : ''}{payWhatYouWant.minimumAmount && payWhatYouWant.maximumAmount ? ' · ' : ''}{payWhatYouWant.maximumAmount ? `Maximum ${formatCheckoutAmount(payWhatYouWant.maximumAmount, currency)}` : ''}</p>}
-          {payWhatYouWant.collectReferenceId && <label className="payora-checkout__field"><span>Reference ID <em>(optional)</em></span><input className="payora-checkout__input" maxLength={100} value={referenceId} onChange={(event) => { setReferenceId(event.target.value); setPwywFieldErrors((current) => ({ ...current, reference_id: '' })); }} disabled={pwywIntentLocked || loading} placeholder="e.g. Invoice #1042 or Client ID" /><small>Helps the business match your payment.</small>{pwywFieldErrors.reference_id && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.reference_id}</small>}</label>}
-          {payWhatYouWant.collectComments && <label className="payora-checkout__field"><span>Comments <em>(optional)</em></span><textarea className="payora-checkout__input payora-checkout__pwyw-comments" maxLength={500} value={comments} onChange={(event) => { setComments(event.target.value); setPwywFieldErrors((current) => ({ ...current, comments: '' })); }} disabled={pwywIntentLocked || loading} placeholder="Add a note for the business" /><small className="payora-checkout__pwyw-count">{comments.length} / 500</small>{pwywFieldErrors.comments && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.comments}</small>}</label>}
+          <div className="payora-checkout__pwyw-extra-fields">
+            {payWhatYouWant.collectReferenceId && <label className="payora-checkout__field"><span>Reference ID <em>(optional)</em></span><input className="payora-checkout__input" maxLength={100} value={referenceId} onChange={(event) => { setReferenceId(event.target.value); setPwywFieldErrors((current) => ({ ...current, reference_id: '' })); }} disabled={pwywIntentLocked || loading} placeholder="e.g. Invoice #1042 or Client ID" /><small>Helps {payWhatYouWant.businessName || 'the business'} match your payment.</small>{pwywFieldErrors.reference_id && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.reference_id}</small>}</label>}
+            {payWhatYouWant.collectComments && <label className="payora-checkout__field"><span>Note <em>(optional)</em></span><textarea className="payora-checkout__input payora-checkout__pwyw-comments" maxLength={500} value={comments} onChange={(event) => { setComments(event.target.value); setPwywFieldErrors((current) => ({ ...current, comments: '' })); }} disabled={pwywIntentLocked || loading} placeholder="Add a note for the business" /><small className="payora-checkout__pwyw-count">{comments.length} / 500</small>{pwywFieldErrors.comments && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.comments}</small>}</label>}
+          </div>
           {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
           <button className="payora-checkout__button payora-checkout__pwyw-pay" type="button" style={{ backgroundColor: buttonColor }} onClick={() => void beginCheckout()} disabled={!amountValid || loading || unavailableModalOpen}>{loading ? <><span className="payora-checkout__spinner" /> Preparing secure checkout…</> : <>{payWhatYouWant.buttonLabel || 'Pay Now'}{amountValid ? ` · ${formatCheckoutAmount(customerAmount, currency)}` : ''}</>}</button>
           <div className="payora-checkout__trust payora-checkout__pwyw-trust"><span><LockKeyhole size={14} /> Secure one-time payment</span><span>Card details are entered on the next step</span></div>
           {pwywIntentLocked && error && <p className="payora-checkout__pwyw-hint">This checkout request is saved. Retry without changing the amount or details, or contact the business if the request was rejected.</p>}
+          {payWhatYouWant.supportEmail && <footer className="payora-checkout__pwyw-help">Need help? <a href={`mailto:${payWhatYouWant.supportEmail}`}>{payWhatYouWant.supportEmail}</a></footer>}
         </section>
-        <div className="payora-checkout__pwyw-powered">Powered by MyPowerly</div>
+        <div className="payora-checkout__pwyw-powered">Secure checkout by <strong>MyPowerly</strong></div>
       </div>
       {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => void beginCheckout()} loading={loading} />}
     </div>;
