@@ -695,43 +695,92 @@ html, body {
   .payora-ach__authorization { padding: 13px; }
 }
 .payora-checkout--pwyw {
+  --pwyw-bg: #f1ede5;
+  --pwyw-card: #fffdfa;
+  --pwyw-text: #27231f;
+  --pwyw-muted: #81796f;
+  --pwyw-line: #e7ded1;
+  --pwyw-field: #faf8f4;
+  --pwyw-gold: #c99443;
   min-height: 100vh;
-  padding: 36px 16px 24px;
-  background: #f5f7fa;
+  padding: 24px 16px 32px;
+  color: var(--pwyw-text);
+  background: var(--pwyw-bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-.payora-checkout--pwyw .payora-checkout__pwyw-shell { width: min(100%, 520px); margin: 0 auto; }
+.payora-checkout--pwyw.theme-dark {
+  --pwyw-bg: #171512;
+  --pwyw-card: #252119;
+  --pwyw-text: #f5f1e9;
+  --pwyw-muted: #a69c8d;
+  --pwyw-line: #41382c;
+  --pwyw-field: #201d18;
+  --pwyw-gold: #d5a34e;
+}
+.payora-checkout--pwyw .payora-checkout__pwyw-shell { width: min(100%, 420px); margin: 0 auto; }
 .payora-checkout--pwyw .payora-checkout__pwyw-card {
-  padding: 28px;
-  border: 1px solid #d6d9dd;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+  overflow: hidden;
+  padding: 23px 20px 0;
+  border: 1px solid var(--pwyw-line);
+  border-radius: 22px;
+  background: var(--pwyw-card);
+  color: var(--pwyw-text);
+  box-shadow: 0 18px 42px rgba(45, 35, 20, .12);
 }
-.payora-checkout--pwyw .payora-checkout__pwyw-business {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
-  color: #344054; font-size: 14px; font-weight: 650;
+.payora-checkout--pwyw .payora-checkout__pwyw-header { text-align: center; }
+.payora-checkout--pwyw .payora-checkout__pwyw-avatar {
+  position: relative; display: grid; place-items: center; width: 62px; height: 62px; margin: 0 auto 8px;
+  overflow: hidden; border: 2px solid var(--pwyw-gold); border-radius: 50%;
+  background: var(--pwyw-card); color: var(--pwyw-gold); font-size: 15px; font-weight: 700;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pwyw-gold) 17%, transparent);
 }
-.payora-checkout--pwyw .payora-checkout__pwyw-business img {
-  width: 42px; height: 42px; object-fit: contain; border-radius: 8px;
-}
-.payora-checkout--pwyw .payora-checkout__field { display: grid; gap: 8px; margin-top: 20px; color: #344054; font-size: 14px; font-weight: 650; }
-.payora-checkout--pwyw .payora-checkout__field em { color: #667085; font-size: 13px; font-style: normal; font-weight: 400; }
-.payora-checkout--pwyw .payora-checkout__field small { color: #667085; font-size: 12px; font-weight: 400; }
-.payora-checkout--pwyw .payora-checkout__field-error { color: #b42318; font-size: 12px; font-weight: 500; }
+.payora-checkout--pwyw .payora-checkout__pwyw-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.payora-checkout--pwyw .payora-checkout__pwyw-business { color: var(--pwyw-text); font-size: 11px; font-weight: 650; }
+.payora-checkout--pwyw .payora-checkout__pwyw-header .payora-checkout__title { margin: 5px 0 0; color: var(--pwyw-text); font-size: 20px; font-weight: 750; letter-spacing: -.025em; }
+.payora-checkout--pwyw .payora-checkout__pwyw-header .payora-checkout__description { max-width: 270px; margin: 4px auto 0; color: var(--pwyw-muted); font-size: 11px; line-height: 1.5; }
+.payora-checkout--pwyw .payora-checkout__pwyw-amount-field { margin-top: 29px; }
 .payora-checkout--pwyw .payora-checkout__pwyw-amount {
-  display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px;
-  border: 1px solid #cfd4dc; border-radius: 10px; background: #fff; color: #667085;
+  display: flex; align-items: center; gap: 7px; width: min(100%, 205px); height: 62px; margin: 0 auto; padding: 0 4px;
+  border: 0; border-bottom: 1px solid var(--pwyw-line); border-radius: 0; background: transparent; color: var(--pwyw-muted);
 }
-.payora-checkout--pwyw .payora-checkout__pwyw-amount input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; color: #101828; font-family: inherit; font-size: 22px; font-weight: 650; line-height: 1; }
-.payora-checkout--pwyw .payora-checkout__pwyw-currency { border-radius: 6px; background: #f2f4f7; padding: 5px 8px; color: #475467; font-size: 12px; font-weight: 650; }
-.payora-checkout--pwyw .payora-checkout__pwyw-hint { margin: 7px 0 0; color: #667085; font-size: 12px; line-height: 1.5; }
-.payora-checkout--pwyw .payora-checkout__pwyw-comments { min-height: 110px; resize: vertical; }
+.payora-checkout--pwyw .payora-checkout__pwyw-symbol { color: var(--pwyw-muted); font-size: 18px; font-weight: 500; }
+.payora-checkout--pwyw .payora-checkout__pwyw-amount input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; color: var(--pwyw-text); font: inherit; font-size: 36px; font-weight: 650; line-height: 1; text-align: center; }
+.payora-checkout--pwyw .payora-checkout__pwyw-amount input::placeholder { color: color-mix(in srgb, var(--pwyw-muted) 35%, transparent); opacity: 1; }
+.payora-checkout--pwyw .payora-checkout__pwyw-currency { padding: 4px 5px; color: var(--pwyw-muted); font-size: 8px; font-weight: 750; letter-spacing: .14em; }
+.payora-checkout--pwyw .payora-checkout__pwyw-quick-amounts { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-quick-amounts button { min-width: 49px; padding: 6px 12px; border: 1px solid var(--pwyw-line); border-radius: 999px; background: transparent; color: var(--pwyw-text); font-size: 10px; font-weight: 700; transition: border-color .15s, background .15s, transform .15s; }
+.payora-checkout--pwyw .payora-checkout__pwyw-quick-amounts button:hover:not(:disabled), .payora-checkout--pwyw .payora-checkout__pwyw-quick-amounts button[aria-pressed="true"] { border-color: var(--pwyw-gold); background: color-mix(in srgb, var(--pwyw-gold) 12%, transparent); }
+.payora-checkout--pwyw .payora-checkout__pwyw-quick-amounts button:hover:not(:disabled) { transform: translateY(-1px); }
+.payora-checkout--pwyw .payora-checkout__pwyw-entry-hint { margin: 7px 0 0; color: var(--pwyw-muted); text-align: center; font-size: 9px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-extra-fields { margin: 19px -2px 0; padding-top: 4px; border-top: 1px solid var(--pwyw-line); }
+.payora-checkout--pwyw .payora-checkout__field { display: grid; gap: 6px; margin-top: 13px; color: var(--pwyw-text); font-size: 10px; font-weight: 650; }
+.payora-checkout--pwyw .payora-checkout__field.payora-checkout__pwyw-amount-field { display: block; width: 100%; text-align: center; }
+.payora-checkout--pwyw .payora-checkout__pwyw-amount-field > .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.payora-checkout--pwyw .payora-checkout__field em { color: var(--pwyw-muted); font-size: 10px; font-style: normal; font-weight: 400; }
+.payora-checkout--pwyw .payora-checkout__field small { color: var(--pwyw-muted); font-size: 9px; font-weight: 400; }
+.payora-checkout--pwyw .payora-checkout__input { border-color: var(--pwyw-line); background: var(--pwyw-field); color: var(--pwyw-text); }
+.payora-checkout--pwyw .payora-checkout__input::placeholder { color: color-mix(in srgb, var(--pwyw-muted) 70%, transparent); }
+.payora-checkout--pwyw .payora-checkout__field-error { color: #c23a35; font-size: 11px; font-weight: 500; }
+.payora-checkout--pwyw .payora-checkout__pwyw-comments { min-height: 62px; resize: vertical; }
 .payora-checkout--pwyw .payora-checkout__pwyw-count { text-align: right; }
-.payora-checkout--pwyw .payora-checkout__pwyw-pay { width: 100%; margin-top: 22px; color: #fff; }
-.payora-checkout--pwyw .payora-checkout__pwyw-pay:disabled { opacity: .55; cursor: not-allowed; }
-.payora-checkout--pwyw .payora-checkout__pwyw-trust { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 12px; margin-top: 18px; color: #667085; }
-.payora-checkout--pwyw .payora-checkout__pwyw-powered { padding-top: 18px; text-align: center; color: #667085; font-size: 12px; }
-.payora-checkout--pwyw.is-embedded { min-height: 100vh; padding: 18px 12px; background: #f5f7fa; }
+.payora-checkout--pwyw .payora-checkout__pwyw-pay { width: 100%; min-height: 46px; margin-top: 16px; color: #fff; font-size: 12px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-pay:disabled { opacity: .62; cursor: not-allowed; }
+.payora-checkout--pwyw .payora-checkout__pwyw-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin-top: 10px; color: var(--pwyw-muted); font-size: 9px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-trust span:first-child { display: inline-flex; align-items: center; gap: 5px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-help { margin: 16px -20px 0; padding: 12px 8px; border-top: 1px solid var(--pwyw-line); color: var(--pwyw-muted); text-align: center; font-size: 9px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-help a { color: var(--pwyw-text); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-hint { margin: 7px 0 0; color: var(--pwyw-muted); font-size: 11px; line-height: 1.5; }
+.payora-checkout--pwyw .payora-checkout__pwyw-powered { padding-top: 10px; color: var(--pwyw-muted); text-align: center; font-size: 10px; }
+.payora-checkout--pwyw .payora-checkout__pwyw-powered strong { color: var(--pwyw-text); }
+.payora-checkout--pwyw.theme-dark .payora-checkout__field-error { color: #ff9289; }
+.payora-checkout--pwyw .payora-checkout__alert { font-size: 12px; }
+.payora-checkout--pwyw.is-embedded { min-height: 100vh; padding: 18px 12px; }
+.payora-checkout--pwyw.is-embedded .payora-checkout__pwyw-card { box-shadow: none; }
+@media (max-width: 520px) {
+  .payora-checkout--pwyw { min-height: 100svh; padding: 14px 10px; }
+  .payora-checkout--pwyw .payora-checkout__pwyw-card { padding: 20px 16px 0; border-radius: 18px; }
+  .payora-checkout--pwyw .payora-checkout__pwyw-help { margin-right: -16px; margin-left: -16px; }
+}
 .payora-checkout--pwyw.is-embedded .payora-checkout__pwyw-card { box-shadow: none; }
 @media (max-width: 520px) {
   .payora-checkout--pwyw { min-height: 100svh; padding: 14px 10px; }
