@@ -1,3 +1,4 @@
+import { customerCheckoutMessage } from './checkoutMessages';
 import React, { useRef, useState } from 'react';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Copy, CreditCard, LockKeyhole, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
@@ -106,6 +107,7 @@ export function CheckoutUnavailableModal({
   onClose,
   onRetry,
   loading = false,
+  retryLabel,
 }: {
   message: string;
   supportEmail?: string;
@@ -114,6 +116,7 @@ export function CheckoutUnavailableModal({
   onClose: () => void;
   onRetry: () => void;
   loading?: boolean;
+  retryLabel?: string;
 }) {
   const [failedRetries, setFailedRetries] = useState(0);
   const wasLoading = useRef(false);
@@ -121,12 +124,14 @@ export function CheckoutUnavailableModal({
   const retryRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const errorCode = message.match(/\b(5\d\d|4\d\d)\b/)?.[1] || '503';
+  const errorCode = message.match(/\bHTTP ([45]\d\d)\b/i)?.[1];
+  const detail = customerCheckoutMessage(message.replace(/\s*\(HTTP [45]\d\d\)\s*$/, ''));
   const inactiveCardSetup = !paymentMayHaveBeenSubmitted && /card collection is no longer active|collection.*(?:expired|inactive|revoked)/i.test(message);
-  const title = inactiveCardSetup ? 'Secure card setup needs refreshing' : 'We couldn’t start checkout';
+  const title = paymentMayHaveBeenSubmitted ? 'Check your original payment'
+    : inactiveCardSetup ? 'Secure card setup needs refreshing' : 'We couldn’t start checkout';
   const safePlanName = planName?.trim() || 'Selected plan';
-  const mailSubject = `Checkout support: ${safePlanName} (Error ${errorCode})`;
-  const mailBody = `Please help me with checkout for ${safePlanName}. Error code: ${errorCode}. I have not included any card details.`;
+  const mailSubject = `Checkout support: ${safePlanName} ${errorCode ? `(HTTP ${errorCode})` : ''}`;
+  const mailBody = `Please help me with checkout for ${safePlanName}. ${errorCode ? `HTTP status: ${errorCode}. ` : ''}I have not included any card details.`;
   const supportHref = supportEmail
     ? `mailto:${supportEmail}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`
     : `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
@@ -179,21 +184,22 @@ export function CheckoutUnavailableModal({
         <div className="payora-checkout-modal__icon"><AlertCircle size={24} /></div>
         <h2 id="checkout-unavailable-title">{title}</h2>
         <p id="checkout-unavailable-message">
+          {detail && <>{detail}<br /></>}
           {inactiveCardSetup
             ? <><strong>No payment was submitted.</strong><br />This secure card session is no longer active. Refresh its status before entering another card.</>
             : paymentMayHaveBeenSubmitted
             ? 'We couldn’t confirm your payment. Check its status before trying again.'
             : failedRetries >= 2
-              ? <><strong>You haven’t been charged.</strong><br />Please contact support to continue.</>
-              : <><strong>You haven’t been charged.</strong><br />Please try again, or contact support if this keeps happening.</>}
+              ? 'Contact support if you still can’t continue.'
+              : 'Use the action below to continue or check the original checkout.'}
         </p>
         <div className="payora-checkout-modal__actions">
           <a className="payora-checkout-modal__secondary" href={supportHref}>Contact support</a>
           <button ref={retryRef} type="button" className="payora-checkout-modal__retry" onClick={onRetry} disabled={loading}>
-            {loading ? <><span className="payora-checkout__spinner" /> Checking…</> : <><RefreshCw size={15} /> {inactiveCardSetup ? 'Refresh status' : 'Try again'}</>}
+            {loading ? <><span className="payora-checkout__spinner" /> Checking…</> : <><RefreshCw size={15} /> {retryLabel || (paymentMayHaveBeenSubmitted || inactiveCardSetup ? 'Check payment status' : 'Try again')}</>}
           </button>
         </div>
-        <div className="payora-checkout-modal__code">Error code: {errorCode}</div>
+        {errorCode && <div className="payora-checkout-modal__code">HTTP status: {errorCode}</div>}
       </section>
     </div>
   );

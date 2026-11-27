@@ -1,3 +1,4 @@
+import { widgetCheckoutStatusTitle } from './checkoutMessages';
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from './apiConfig';
 import { MoovNativeCardCheckout } from './MoovNativeCardCheckout';
@@ -20,7 +21,7 @@ import {
 } from './widgetCheckoutService';
 import { VaultCollectionFlow } from './VaultCollectionFlow';
 import { CpachargeAchFlow } from './CpachargeAchFlow';
-import { supportsCpachargeAch } from './cpachargeAchService';
+import { hasCpachargeSubmissionStarted, supportsCpachargeAch } from './cpachargeAchService';
 import { confirmedAchRefund, hasAchReceipt } from './achPaymentStatus';
 import { ServicePaymentPlanFlow } from './ServicePaymentPlanFlow';
 import { WidgetCheckoutContact, WidgetEmailOptOut } from './WidgetCheckoutContact';
@@ -188,7 +189,8 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const continuePriceLabel = displayPlanPrice ? `${displayPlanPrice}${billingText ? ` · ${billingText}` : ''}` : '';
   const serviceUnavailable = /temporarily unavailable|HTTP 503/i.test(error);
   const paymentMayHaveBeenSubmitted = Boolean(checkout && (
-    readMoovRecovery(checkout.purchaseId).submitted || checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)
+    readMoovRecovery(checkout.purchaseId).submitted
+    || (hasCpachargeAchFlow(checkout) && hasCpachargeSubmissionStarted(checkout.purchaseId)) || checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'review_required', 'succeeded'].includes(checkout.status)
   ));
 
   useEffect(() => {
@@ -382,13 +384,11 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         if (payWhatYouWant) {
           const entries = Object.entries(err.fieldErrors || {}).map(([key, messages]) => [key, messages[0]] as const);
           setPwywFieldErrors(Object.fromEntries(entries));
-          if (err.httpStatus === 404) setError('This payment page is not available.');
-          else if (err.httpStatus === 409) setError('This payment request conflicts with an earlier checkout. Retry the same request or check its status before starting another payment.');
-          else if (err.httpStatus && err.httpStatus >= 500 && !/unavailable/i.test(message)) setError('Payments are temporarily unavailable. Please try again later.');
+          if (err.httpStatus === 409) setError(`${message} Check the original checkout before starting another payment.`);
         }
       }
       if (err instanceof WidgetCheckoutRequestError && err.phase === 'status') setRetryCreationRequired(false);
-      if (/temporarily unavailable|HTTP 503/i.test(message)) setUnavailableModalOpen(true);
+      if (/temporarily unavailable|HTTP 5\d\d/i.test(message)) setUnavailableModalOpen(true);
     } finally {
       starting.current = false;
       setLoading(false);
@@ -411,7 +411,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     } catch (err: any) {
       const message = err?.message || 'We could not confirm the original checkout status. Do not create another checkout.';
       setError(message);
-      if (/temporarily unavailable|HTTP 503/i.test(message)) setUnavailableModalOpen(true);
+      if (/temporarily unavailable|HTTP 5\d\d/i.test(message)) setUnavailableModalOpen(true);
     } finally {
       setLoading(false);
     }
@@ -452,7 +452,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       }
       const message = err?.message || 'We could not start your new checkout. Retry to safely recover the same request.';
       setError(message);
-      if (/temporarily unavailable|HTTP 503/i.test(message)) setUnavailableModalOpen(true);
+      if (/temporarily unavailable|HTTP 5\d\d/i.test(message)) setUnavailableModalOpen(true);
     } finally {
       starting.current = false;
       setLoading(false);
@@ -616,10 +616,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
           <CheckoutProgress active={2} />
           <div className="payora-checkout__grid">
             <section className="payora-checkout__main">
-              {!payWhatYouWant && <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>}
+              {!payWhatYouWant && !paymentMayHaveBeenSubmitted && <button className="payora-checkout__back" onClick={onBack}><ArrowLeft size={15} /> Back to plans</button>}
               <div className="payora-checkout__eyebrow">Checkout update</div>
-              <h1 className="payora-checkout__title">{checkout.status === 'expired' ? 'Checkout expired' : offerNeedsRestart ? 'Payment page updated' : paymentMayHaveBeenSubmitted ? 'We’re checking your payment' : 'Checkout unavailable'}</h1>
+              <h1 className="payora-checkout__title">{widgetCheckoutStatusTitle(checkout.status, paymentMayHaveBeenSubmitted)}</h1>
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
+              {checkout.statusMessage && checkout.statusMessage !== (blockedReason || statusMessage(checkout.status))
+                && <p className="payora-checkout__description">{checkout.statusMessage}</p>}
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
               <SupportId value={checkout.purchaseId} />
               {checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? (
@@ -634,20 +636,20 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 <button className="payora-checkout__button" type="button" onClick={restartFromUpdatedOffer} disabled={loading}>Review updated payment page <ArrowRight size={17} /></button>
               ) : (
                 <button className="payora-checkout__text-button payora-checkout__refresh-link" onClick={checkStatus} disabled={loading}>
-                  {loading ? 'Refreshing payment status…' : 'Having trouble? Refresh payment status'}
+                  {loading ? 'Refreshing payment status…' : paymentMayHaveBeenSubmitted ? 'Check payment status' : 'Check checkout status'}
                 </button>
               )}
               <p className="payora-checkout__footer">{offerNeedsRestart
                 ? 'The previous checkout will not be charged. Reloading clears its unused request and fetches the latest published payment page.'
                 : checkout.status === 'expired' && !paymentMayHaveBeenSubmitted
                 ? 'Your previous checkout remains saved for reference. Starting again creates a new secure checkout at the current price and payment settings.'
-                : paymentMayHaveBeenSubmitted ? 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'
+                : paymentMayHaveBeenSubmitted ? 'Keep your reference and check the original payment before taking another action.'
                 : 'Refresh to check whether this checkout is available, or contact the merchant for help.'}</p>
             </section>
-            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={onBack} processorLabel={checkoutProcessorLabel(checkout)} />
+            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={paymentMayHaveBeenSubmitted ? undefined : onBack} processorLabel={checkoutProcessorLabel(checkout)} />
           </div>
         </div>
-        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? startAgain : checkStatus} loading={loading} />}
+        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? startAgain : checkStatus} retryLabel={checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? 'Start again' : paymentMayHaveBeenSubmitted ? 'Check payment status' : 'Check checkout status'} loading={loading} />}
       </div>
     );
   }
@@ -697,7 +699,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         </section>
         <div className="payora-checkout__pwyw-powered">Secure checkout by <strong>MyPowerly</strong></div>
       </div>
-      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => void beginCheckout()} loading={loading} />}
+      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => void beginCheckout()} retryLabel="Retry checkout" loading={loading} />}
     </div>;
   }
 
@@ -727,7 +729,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         </div>
         <div className="payora-checkout__footer">Your exact total is confirmed from the published plan before you submit payment.</div>
       </div>
-      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => beginCheckout()} loading={loading} />}
+      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={() => beginCheckout()} retryLabel="Retry checkout" loading={loading} />}
     </div>
   );
 };

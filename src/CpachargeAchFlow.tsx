@@ -1,3 +1,4 @@
+import { customerCheckoutMessage } from './checkoutMessages';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Building2, CircleHelp, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
 import { CheckoutHeader, CheckoutProgress, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
@@ -82,7 +83,7 @@ type Props = {
 };
 
 function safeApiMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : '';
+  const message = error instanceof Error ? customerCheckoutMessage(error.message) : '';
   return message || 'We could not confirm this step. Keep this checkout and check its status before trying again.';
 }
 
@@ -149,8 +150,8 @@ export const CpachargeAchFlow: React.FC<Props> = ({
       if (updated.status === 'ready' && !updated.attemptId && !updated.payment && submissionLocked) {
         setError('We couldn’t confirm whether your payment was received. Contact the merchant with your payment reference before trying again.');
       }
-    } catch {
-      setError('We couldn’t refresh the payment status. Check the same payment again or contact support with your reference.');
+    } catch (cause) {
+      setError(`${safeApiMessage(cause)} Check the same payment again or contact support with your reference.`);
     } finally { setBusy(false); }
   };
 
@@ -167,7 +168,7 @@ export const CpachargeAchFlow: React.FC<Props> = ({
         await refreshOriginalStatus();
       }
     } catch (err) {
-      setError('We couldn’t prepare the secure bank form. Try bank setup again or contact support with your reference.');
+      setError(`${safeApiMessage(err)} Try bank setup again or contact support with your reference.`);
     } finally { setInitializing(false); }
   };
 
@@ -277,10 +278,10 @@ export const CpachargeAchFlow: React.FC<Props> = ({
       let result;
       try {
         result = await submitCpachargeAchPayment(latestCheckout, collection, providerToken);
-      } catch {
+      } catch (cause) {
         const recovered = await refreshOriginalStatus().catch(() => undefined);
         if (!recovered?.payment && !recovered?.attemptId) {
-          setError('We couldn’t confirm whether your payment was received. Check the original payment status or contact support with your reference.');
+          setError(`${safeApiMessage(cause)} Check the original payment status before paying again.`);
         }
         return;
       }

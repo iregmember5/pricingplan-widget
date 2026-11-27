@@ -431,7 +431,7 @@ export const VaultCollectionFlow: React.FC<Props> = ({
           <OrderSummary planName={checkout.planName} features={planFeatures} amount={checkout.amount} unitAmount={checkout.unitAmount} quantity={checkout.quantity} currency={checkout.currency} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={!hasAttempt ? onChangePlan : undefined} />
         </div>
       </div>
-      {unavailableOpen && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={checkout.planName} paymentMayHaveBeenSubmitted={hasAttempt} onClose={() => setUnavailableOpen(false)} onRetry={hasAttempt ? checkPayment : refreshCollection} loading={busy} />}
+      {unavailableOpen && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={checkout.planName} paymentMayHaveBeenSubmitted={hasAttempt} onClose={() => setUnavailableOpen(false)} onRetry={hasAttempt ? checkPayment : refreshCollection} retryLabel={hasAttempt ? "Check payment status" : "Refresh secure card setup"} loading={busy} />}
     </div>
   );
 };

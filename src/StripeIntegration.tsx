@@ -273,7 +273,7 @@ export const StripeIntegration: React.FC<StripeIntegrationProps> = ({
           />
         </div>
       </div>
-      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={checkoutState.planName} paymentMayHaveBeenSubmitted={attemptStarted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={refreshStatus} loading={processing} />}
+      {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={checkoutState.planName} paymentMayHaveBeenSubmitted={attemptStarted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={refreshStatus} retryLabel="Check payment status" loading={processing} />}
     </div>
   );
 };

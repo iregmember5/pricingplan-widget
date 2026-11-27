@@ -1,3 +1,4 @@
+import { customerCheckoutMessage } from './checkoutMessages';
 import { API_BASE_URL } from './apiConfig';
 import { readMoovRecovery } from './moovNativeCheckout';
 import type { WidgetNotificationPreference } from './widgetCustomerService';
@@ -49,6 +50,7 @@ export interface WidgetPaymentStatus {
 }
 
 export interface WidgetCheckoutSession {
+  statusMessage?: string;
   checkoutId: string;
   purchaseId: string;
   widgetKind: WidgetKind;
@@ -114,9 +116,9 @@ function createRecoverySecret() {
 function extractData(body: any) {
   if (body?.success !== true || !body?.data || typeof body.data !== 'object') {
     const fieldErrors = body?.errors && typeof body.errors === 'object'
-      ? Object.values(body.errors).flatMap((value: any) => Array.isArray(value) ? value : [value]).filter(Boolean).join(' ')
+      ? Object.values(body.errors).flat().map(customerCheckoutMessage).find(Boolean)
       : '';
-    throw new Error(fieldErrors || body?.message || 'The checkout request was rejected.');
+    throw new Error(customerCheckoutMessage(body?.message) || fieldErrors || 'The checkout request was rejected.');
   }
   return body.data;
 }
@@ -140,6 +142,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     expiresAt: String(row?.expires_at || ''),
     recoveryExpiresAt: String(row?.recovery_expires_at || ''),
     status: String(row?.status || ''),
+    statusMessage: customerCheckoutMessage(row?.customer_message) || customerCheckoutMessage(row?.status_message) || undefined,
     canSubmit: row?.can_submit === true,
     purchaseToken: typeof row?.purchase_token === 'string' ? row.purchase_token : null,
     idempotencyKey: String(row?.idempotency_key || ''),
@@ -223,7 +226,11 @@ async function post(path: string, payload: Record<string, unknown>, expectedStat
     }
     const rawErrors = body?.errors && typeof body.errors === 'object' ? body.errors : {};
     const fieldErrors = Object.fromEntries(Object.entries(rawErrors).map(([key, value]: [string, any]) => [key, (Array.isArray(value) ? value : [value]).map(String)]));
-    const message = body?.message || body?.error || Object.values(fieldErrors).flat().join(' ') || `Checkout request failed (HTTP ${response.status}).`;
+    const message = customerCheckoutMessage(body?.message) || customerCheckoutMessage(body?.error)
+      || Object.values(fieldErrors).flat().map(customerCheckoutMessage).find(Boolean)
+      || (response.status === 429 ? 'Too many checkout requests. Wait a moment before checking again.'
+        : response.status >= 500 ? 'Payments are temporarily unavailable. Check the original checkout before proceeding.'
+        : 'The checkout request could not be completed.');
     const error: any = new Error(`${message} (HTTP ${response.status})`);
     error.httpStatus = response.status;
     error.fieldErrors = fieldErrors;
