@@ -41,8 +41,8 @@ type DropForm = HTMLElement & {
   onReportValidity?: (valid: boolean) => void;
 };
 
-const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900';
-const buttonClass = 'rounded-lg bg-blue-700 px-4 py-2.5 font-semibold text-white hover:bg-blue-800 disabled:opacity-50';
+const inputClass = 'payora-checkout__input';
+const buttonClass = 'payora-checkout__button';
 
 export function MoovNativeCardCheckout({ apiRoot, purchase, onPayment, onSubmissionStart, onSubmissionUncertain }: {
   apiRoot: string;
@@ -128,28 +128,29 @@ export function MoovNativeCardCheckout({ apiRoot, purchase, onPayment, onSubmiss
         } finally { unlock(); }
       };
       const fields = [
-        ['moov-text-input', 'holderName', 'Name on card', 'cc-name'],
-        ['moov-card-number-input', 'cardNumber', 'Card number', 'cc-number'],
-        ['moov-expiration-date-input', 'expiration', 'Expiration date', 'cc-exp'],
-        ['moov-card-security-code-input', 'cardCvv', 'Security code', 'cc-csc'],
-        ['moov-text-input', 'billingAddress.postalCode', 'Billing ZIP code', 'postal-code'],
+        { tag: 'moov-text-input', name: 'holderName', label: 'Name on card', autocomplete: 'cc-name', placeholder: 'Full name' },
+        { tag: 'moov-card-number-input', name: 'cardNumber', label: 'Card number', autocomplete: 'cc-number', placeholder: '1234  5678  9012  3456' },
+        { tag: 'moov-expiration-date-input', name: 'expiration', label: 'Expiration date', autocomplete: 'cc-exp', placeholder: 'MM / YY', compact: true },
+        { tag: 'moov-card-security-code-input', name: 'cardCvv', label: 'Security code', autocomplete: 'cc-csc', placeholder: 'CVC', compact: true },
+        { tag: 'moov-text-input', name: 'billingAddress.postalCode', label: 'Billing ZIP code', autocomplete: 'postal-code', placeholder: 'ZIP or postal code' },
       ];
       host.appendChild(form);
-      for (const [tag, fieldName, labelText, autocomplete] of fields) {
+      for (const config of fields) {
         const container = document.createElement('div');
-        container.className = 'space-y-1';
+        container.className = config.compact ? 'payora-moov__group payora-moov__group--compact' : 'payora-moov__group';
         const label = document.createElement('label');
-        label.textContent = labelText;
-        label.htmlFor = name + '-' + fieldName;
-        label.className = 'block text-sm font-medium';
-        const field = document.createElement(tag);
+        label.textContent = config.label;
+        label.htmlFor = name + '-' + config.name;
+        const field = document.createElement(config.tag) as HTMLElement & { inputStyle?: Record<string, string> };
         field.id = label.htmlFor;
         field.setAttribute('formname', name);
-        field.setAttribute('name', fieldName);
+        field.setAttribute('name', config.name);
         field.setAttribute('required', '');
-        field.setAttribute('autocomplete', autocomplete);
-        field.setAttribute('aria-label', labelText);
-        field.className = 'block w-full';
+        field.setAttribute('autocomplete', config.autocomplete);
+        field.setAttribute('placeholder', config.placeholder);
+        field.setAttribute('aria-label', config.label);
+        field.className = 'payora-moov__input';
+        field.inputStyle = { fontSize: '16px', color: '#1d2a40', lineHeight: '1.4' };
         container.append(label, field);
         host.appendChild(container);
       }
@@ -242,7 +243,7 @@ export function MoovNativeCardCheckout({ apiRoot, purchase, onPayment, onSubmiss
       <button className={buttonClass} type="button" disabled={working || !firstName.trim() || !lastName.trim()} onClick={begin}>Continue to secure card entry</button>
     </>}
     {collection && !collection.ready && !cardId && <>
-      <div className="space-y-3" ref={hostedFields} />
+      <div className="payora-moov__fields" ref={hostedFields} />
       {expired
         ? <button className={buttonClass} type="button" disabled={working} onClick={begin}>Refresh secure card fields</button>
         : <button className={buttonClass} type="button" disabled={working || !dropReady} onClick={link}>{dropReady ? 'Link card securely' : 'Loading secure fields…'}</button>}

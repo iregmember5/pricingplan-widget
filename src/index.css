@@ -667,6 +667,29 @@ html, body {
 .payora-ach__hosted-field:focus-within { border-color: #527cae; outline: 3px solid rgb(66 111 170 / 16%); outline-offset: 1px; }
 .payora-ach__hosted-field { padding: 0; overflow: hidden; }
 .payora-ach__hosted-field iframe { display: block; width: 100% !important; height: 48px !important; border: 0; }
+
+.payora-moov__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.payora-moov__fields > moov-form { position: absolute; width: 0; height: 0; overflow: hidden; }
+.payora-moov__group { grid-column: 1 / -1; min-width: 0; }
+.payora-moov__group--compact { grid-column: auto; }
+.payora-moov__group label { display: block; margin-bottom: 6px; color: #293950; font-size: 13px; font-weight: 650; }
+.payora-moov__input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  padding: 0 12px;
+  color: #1d2a40;
+  background: #fff;
+  border: 1px solid #d7e0eb;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 16px;
+}
+.payora-moov__input iframe { display: block; width: 100%; height: 48px; border: 0; }
+.payora-moov__input:focus-within,
+.payora-moov__input:has(.focus) { border-color: #5c82b8; box-shadow: 0 0 0 4px rgb(66 111 170 / 12%); }
+.payora-moov__input:has(.user-invalid) { border-color: #b42318; }
 .payora-ach__row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .payora-ach__row fieldset { display: flex; flex-wrap: wrap; gap: 8px 15px; min-width: 0; padding: 12px; border: 1px solid #dbe3ed; border-radius: 10px; }
 .payora-ach__row legend { padding: 0 4px; }
