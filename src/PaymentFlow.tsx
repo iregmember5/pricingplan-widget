@@ -1,4 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { API_BASE_URL } from './apiConfig';
+import { MoovNativeCardCheckout } from './MoovNativeCardCheckout';
+import { isNativeMoov, readMoovRecovery } from './moovNativeCheckout';
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { BillingEmailField, CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import { StripeIntegration } from './StripeIntegration';
@@ -69,6 +72,15 @@ function hasVaultCollectionFlow(session: WidgetCheckoutSession) {
     : config.flow === 'vault_to_stripe' && (config.gateway === undefined || config.gateway === 'stripe');
 }
 
+const processorLabels: Record<string, string> = {
+  stripe: 'Stripe', moov: 'Moov', cpacharge: 'CPACharge', paypal: 'PayPal', checkout: 'Checkout.com',
+};
+
+function checkoutProcessorLabel(session: WidgetCheckoutSession | null) {
+  const gateway = session?.collection?.gateway || session?.collection?.provider;
+  return gateway ? processorLabels[gateway] ?? null : null;
+}
+
 function hasCpachargeAchFlow(session: WidgetCheckoutSession) {
   return supportsCpachargeAch(session);
 }
@@ -86,6 +98,7 @@ function statusMessage(status: string) {
     case 'processing': return 'Your payment is processing. Check its status before taking another action.';
     case 'uncertain': return 'We are checking the original payment. Please do not submit another payment.';
     case 'requires_action': return 'Your bank needs you to approve this payment.';
+    case 'review_required': return 'This payment needs review. Keep the original reference and contact the business.';
     case 'failed': return 'This payment did not complete. Keep this reference for support.';
     case 'cancelled': return 'This payment was cancelled. Keep this reference for support.';
     case 'ready': return 'This checkout is not currently accepting payment. No payment was submitted. Contact the merchant.';
@@ -143,7 +156,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   onBack,
 }) => {
   const savedPwywIntent = payWhatYouWant ? getSavedPayWhatYouWantIntent(widgetId) : null;
-  const [step, setStep] = useState<'methods' | 'contact' | 'stripe' | 'vault' | 'ach' | 'status' | 'success' | 'plan'>('methods');
+  const [step, setStep] = useState<'methods' | 'contact' | 'stripe' | 'vault' | 'ach' | 'moov' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
   const [customerAmount, setCustomerAmount] = useState(savedPwywIntent?.amount || amount || '');
   const [referenceId, setReferenceId] = useState(savedPwywIntent?.referenceId || '');
@@ -175,7 +188,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const continuePriceLabel = displayPlanPrice ? `${displayPlanPrice}${billingText ? ` · ${billingText}` : ''}` : '';
   const serviceUnavailable = /temporarily unavailable|HTTP 503/i.test(error);
   const paymentMayHaveBeenSubmitted = Boolean(checkout && (
-    checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)
+    readMoovRecovery(checkout.purchaseId).submitted || checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'succeeded'].includes(checkout.status)
   ));
 
   useEffect(() => {
@@ -196,8 +209,11 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setPriceTimedOut(false);
     setUnavailableModalOpen(false);
 
+    const nativeMoov = isNativeMoov(session.collection, session.currency);
+    const moovSubmitted = nativeMoov && readMoovRecovery(session.purchaseId).submitted;
+
     if (session.status === 'expired') {
-      setBlockedReason(session.attemptId || session.payment
+      setBlockedReason(moovSubmitted || session.attemptId || session.payment
         ? 'This checkout expired after a payment attempt. Check the original payment status before starting another checkout.'
         : statusMessage('expired'));
       setStep('status');
@@ -205,16 +221,16 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     }
 
     if (session.status === 'offer_changed' || session.status === 'offer_unavailable') {
-      setBlockedReason(statusMessage(session.status));
+      setBlockedReason(statusMessage(moovSubmitted ? 'uncertain' : session.status));
       setStep('status');
       return;
     }
 
     const isPlan = session.servicePaymentPlan?.status === 'plan_required';
     const readyForPayment = session.status === 'ready' && session.canSubmit
-      && (hasCpachargeAchFlow(session) || hasVaultCollectionFlow(session) || canStartStripePayment(session));
+      && (hasCpachargeAchFlow(session) || hasVaultCollectionFlow(session) || nativeMoov || canStartStripePayment(session));
     if ((isPlan || readyForPayment) && session.purchaseToken && !session.attemptId && !session.payment
-      && !session.customerNotifications?.contact_saved && contactPassed.current !== session.purchaseId) {
+      && !moovSubmitted && !session.customerNotifications?.contact_saved && contactPassed.current !== session.purchaseId) {
       setBlockedReason('');
       setStep('contact');
       return;
@@ -265,6 +281,14 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
       }
       setBlockedReason('');
       setStep('vault');
+      return;
+    }
+
+    if (session.collection?.flow === 'native_moov') {
+      const ready = nativeMoov && session.canSubmit && session.purchaseToken && session.idempotencyKey
+        && !session.attemptId && !session.payment;
+      setBlockedReason(ready ? '' : 'Secure Moov card entry is unavailable for this checkout. Check the original checkout status.');
+      setStep(ready ? 'moov' : 'status');
       return;
     }
 
@@ -395,7 +419,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
   const startAgain = async () => {
     if (starting.current || loading || !identity || !checkout) return;
-    if (checkout.status !== 'expired' || checkout.attemptId || checkout.payment) {
+    if (checkout.status !== 'expired' || paymentMayHaveBeenSubmitted) {
       setError('We’re still checking the previous payment. Refresh its status before starting another checkout.');
       return;
     }
@@ -479,7 +503,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
                 Return to plans <ArrowRight size={16} />
               </button>
             </section>
-            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout?.amount} planAmount={amount} currency={checkout?.currency || currency} unitAmount={checkout?.unitAmount} quantity={checkout?.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} paymentSummaryLabel={ach ? 'Amount confirmed' : undefined} processorLabel={ach ? 'CPACharge' : undefined} />
+            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout?.amount} planAmount={amount} currency={checkout?.currency || currency} unitAmount={checkout?.unitAmount} quantity={checkout?.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} paymentSummaryLabel={ach ? 'Amount confirmed' : undefined} processorLabel={checkoutProcessorLabel(checkout)} />
           </div>
           <div className="payora-checkout__footer">Your confirmation is based on the payment service’s verified status.</div>
         </div>
@@ -530,6 +554,31 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     );
   }
 
+  if (checkout && identity && step === 'moov' && checkout.purchaseToken) {
+    return <div className="payora-checkout">
+      <div className="payora-checkout__container">
+        <CheckoutHeader />
+        <CheckoutProgress active={2} />
+        <div className="payora-checkout__grid">
+          <section className="payora-checkout__main">
+            <h1 className="payora-checkout__title">Secure card payment</h1>
+            <MoovNativeCardCheckout key={checkout.purchaseId} apiRoot={API_BASE_URL + '/payments'}
+              purchase={{ ...checkout, purchaseToken: checkout.purchaseToken }}
+              onSubmissionStart={() => postEmbedMessage('payment_processing')}
+              onSubmissionUncertain={() => void checkStatus()}
+              onPayment={(payment) => openSession(identity, { ...checkout, status: payment.status, attemptId: payment.attempt_id ?? checkout.attemptId, payment })} />
+            {error && <p role="alert" className="payora-checkout__alert">{error}</p>}
+            <SupportId value={checkout.purchaseId} />
+            <button className="payora-checkout__text-button" type="button" onClick={checkStatus} disabled={loading}>
+              {loading ? 'Checking…' : 'Check payment status'}
+            </button>
+          </section>
+          <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} processorLabel="Moov" />
+        </div>
+      </div>
+    </div>;
+  }
+
   if (checkout && identity && step === 'stripe' && checkout.collection) {
     return (
       <StripeProvider publishableKey={checkout.collection.publishable_key} stripeAccount={checkout.collection.stripe_account}>
@@ -555,7 +604,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
   if (checkout && identity && step === 'status') {
     const offerNeedsRestart = payWhatYouWant && ['offer_changed', 'offer_unavailable'].includes(checkout.status)
-      && !checkout.attemptId && !checkout.payment;
+      && !paymentMayHaveBeenSubmitted;
     const restartFromUpdatedOffer = () => {
       if (!identity || !checkout || !clearTerminalPayWhatYouWantIntent(identity, checkout)) return;
       window.location.reload();
@@ -573,7 +622,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
               <p className="payora-checkout__description">{blockedReason || statusMessage(checkout.status)}</p>
               {error && (!serviceUnavailable || paymentMayHaveBeenSubmitted) && <div className="payora-checkout__alert" role="alert">{error}</div>}
               <SupportId value={checkout.purchaseId} />
-              {checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? (
+              {checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? (
                 restartRejected ? (
                   <button className="payora-checkout__button" type="button" onClick={onBack}>Review your plan <ArrowRight size={17} /></button>
                 ) : (
@@ -590,15 +639,15 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
               )}
               <p className="payora-checkout__footer">{offerNeedsRestart
                 ? 'The previous checkout will not be charged. Reloading clears its unused request and fetches the latest published payment page.'
-                : checkout.status === 'expired' && !checkout.attemptId && !checkout.payment
+                : checkout.status === 'expired' && !paymentMayHaveBeenSubmitted
                 ? 'Your previous checkout remains saved for reference. Starting again creates a new secure checkout at the current price and payment settings.'
                 : paymentMayHaveBeenSubmitted ? 'Keep this page open while we verify the original payment. Do not start another payment until its status is confirmed.'
                 : 'Refresh to check whether this checkout is available, or contact the merchant for help.'}</p>
             </section>
-            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={onBack} />
+            <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency} unitAmount={checkout.unitAmount} quantity={checkout.quantity} billingText={billingText} savingsText={savingsText} supportEmail={supportEmail} onChangePlan={onBack} processorLabel={checkoutProcessorLabel(checkout)} />
           </div>
         </div>
-        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !checkout.attemptId && !checkout.payment ? startAgain : checkStatus} loading={loading} />}
+        {(serviceUnavailable || unavailableModalOpen) && <CheckoutUnavailableModal message={error} supportEmail={supportEmail} planName={displayPlanName} paymentMayHaveBeenSubmitted={paymentMayHaveBeenSubmitted} onClose={() => { setUnavailableModalOpen(false); setError(''); }} onRetry={checkout.status === 'expired' && !paymentMayHaveBeenSubmitted ? startAgain : checkStatus} loading={loading} />}
       </div>
     );
   }

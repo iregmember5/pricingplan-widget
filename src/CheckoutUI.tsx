@@ -216,7 +216,7 @@ type OrderSummaryProps = {
   taxAmount?: string;
   discountAmount?: string;
   onApplyPromo?: (code: string) => void;
-  processorLabel?: string;
+  processorLabel?: string | null;
   paymentSummaryLabel?: string;
 };
 
@@ -289,7 +289,7 @@ export function OrderSummary({
           {!onApplyPromo && <span>Promo codes are not available for this offer.</span>}
         </form>}
       </div></>}
-      <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by {processorLabel}</div>
+      {processorLabel && <div className="payora-checkout__summary-powered"><CreditCard size={16} /> Powered by {processorLabel}</div>}
       </div>
     </aside>
   );

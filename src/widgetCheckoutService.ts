@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './apiConfig';
+import { readMoovRecovery } from './moovNativeCheckout';
 import type { WidgetNotificationPreference } from './widgetCustomerService';
 
 export type WidgetKind = 'new' | 'legacy';
@@ -275,7 +276,7 @@ export function clearConfirmedPayWhatYouWantIntent(identity: WidgetCheckoutIdent
 
 export function clearTerminalPayWhatYouWantIntent(identity: WidgetCheckoutIdentity, session: WidgetCheckoutSession) {
   const safeTerminal = ['offer_changed', 'offer_unavailable', 'expired'].includes(session.status)
-    && !session.attemptId && !session.payment;
+    && !session.attemptId && !session.payment && !readMoovRecovery(session.purchaseId).submitted;
   if (!identity.widgetId || identity.planId || !safeTerminal) return false;
   sessionStorage.removeItem(storageKey(identity.widgetKind, identity.widgetId, ''));
   return true;
@@ -350,7 +351,7 @@ export async function getOrCreateWidgetCheckout(input: {
     // returns immediately so it is not repeatedly resumed or status-polled.
     const resumed = await resumeWidgetCheckout(existing);
     assertCheckoutMatchesIdentity(resumed, existing);
-    if (resumed.status === 'expired' && !resumed.attemptId && !resumed.payment) {
+    if (resumed.status === 'expired' && !resumed.attemptId && !resumed.payment && !readMoovRecovery(resumed.purchaseId).submitted) {
       return { identity: existing, session: resumed, recovered: true };
     }
     const current = await getWidgetCheckoutStatus(existing);
@@ -449,7 +450,7 @@ export async function startNewWidgetCheckout(input: {
   pendingIdentity?: WidgetCheckoutIdentity | null;
 }) {
   const { widgetKind, widgetId, planId = '', quantity, expiredIdentity, expiredSession } = input;
-  if (expiredSession.status !== 'expired' || expiredSession.attemptId || expiredSession.payment) {
+  if (expiredSession.status !== 'expired' || expiredSession.attemptId || expiredSession.payment || readMoovRecovery(expiredSession.purchaseId).submitted) {
     throw new Error('We’re still checking the previous payment. Refresh its status before starting another checkout.');
   }
 
