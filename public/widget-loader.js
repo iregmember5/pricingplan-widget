@@ -30,7 +30,10 @@
     const iframe = document.createElement('iframe');
     const baseUrl = resolveBaseUrl(script);
     const isForm = container.getAttribute('data-type') === 'form';
-    iframe.src = baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true' + (isForm ? '&type=form' : '');
+    const isAppointment = container.getAttribute('data-type') === 'appointment' || new URL(script.src, window.location.href).searchParams.get('type') === 'appointment';
+    iframe.src = isAppointment
+      ? baseUrl + 'appointments/' + encodeURIComponent(slug) + '/?embed=1'
+      : baseUrl + '?slug=' + encodeURIComponent(slug) + '&embed=true' + (isForm ? '&type=form' : '');
     iframe.style.cssText = [
       'width: 100% !important',
       'min-height: 800px !important',
@@ -58,6 +61,7 @@
     };
 
     function onMessage(e) {
+      if (isAppointment && (e.source !== iframe.contentWindow || e.origin !== new URL(baseUrl).origin || !Number.isFinite(e.data?.height) || e.data.height <= 0)) return;
       if (e.data && e.data.type === 'resize' && e.data.height) {
         const newHeight = e.data.height;
         if (Math.abs(newHeight - lastSetHeight) > 10) {
