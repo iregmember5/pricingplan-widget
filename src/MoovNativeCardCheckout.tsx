@@ -140,9 +140,10 @@ export function MoovNativeCardCheckout({ apiRoot, purchase, onPayment, onSubmiss
         container.className = config.compact ? 'payora-moov__group payora-moov__group--compact' : 'payora-moov__group';
         const label = document.createElement('label');
         label.textContent = config.label;
-        label.htmlFor = name + '-' + config.name;
+        const fieldId = `${name}-${config.name.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+        label.htmlFor = fieldId;
         const field = document.createElement(config.tag) as HTMLElement & { inputStyle?: Record<string, string> };
-        field.id = label.htmlFor;
+        field.id = fieldId;
         field.setAttribute('formname', name);
         field.setAttribute('name', config.name);
         field.setAttribute('required', '');
