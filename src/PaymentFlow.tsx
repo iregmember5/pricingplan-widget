@@ -1,11 +1,11 @@
 import HostedProviderPayment, { hostedProviderRoute } from './HostedProviderPayment';
 import type { PaymentCategory, PaymentMethodOption } from './paymentCategories';
 import { widgetCheckoutStatusTitle } from './checkoutMessages';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { API_BASE_URL } from './apiConfig';
 import { MoovNativeCardCheckout } from './MoovNativeCardCheckout';
 import { isNativeMoov, readMoovRecovery } from './moovNativeCheckout';
-import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, CreditCard, Landmark, LockKeyhole, ShieldCheck, Wallet } from 'lucide-react';
 import { BillingEmailField, CheckoutHeader, CheckoutProgress, CheckoutUnavailableModal, OrderSummary, SupportId, formatCheckoutAmount } from './CheckoutUI';
 import { StripeIntegration } from './StripeIntegration';
 import { StripeProvider } from './StripeProvider';
@@ -330,15 +330,28 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setCategoryLocked(false);
   }, [widgetId, widgetKind, planId, customerAmount, referenceId, comments]);
 
+  const paymentMethodGroup = useId();
   const paymentMethodPicker = methodChoices.length > 0 && !retryCreationRequired && (
-    <fieldset className="payora-checkout__field" disabled={loading || pwywIntentLocked || categoryLocked}>
+    <fieldset className="payora-checkout__payment-methods" disabled={loading || pwywIntentLocked || categoryLocked}>
       <legend>Payment method</legend>
-      {methodChoices.map(option => <label className="payora-checkout__pwyw-hint" key={option.category}>
-        <input type="radio" name="widget-payment-method" value={option.category} checked={category === option.category}
-          disabled={!option.available} onChange={() => setCategory(option.category)} /> {option.label}
-        {!option.available && <small> · Unavailable</small>}
-      </label>)}
-      {!methodChoices.some(option => option.available) && <small>No payment methods are currently available. Contact the merchant.</small>}
+      <div className="payora-checkout__payment-options">
+        {methodChoices.map(option => {
+          const Icon = option.category === 'card' ? CreditCard : option.category === 'ach' ? Landmark : Wallet;
+          return (
+            <label className="payora-checkout__payment-option" key={option.category}
+              data-available={option.available}>
+              <span className="payora-checkout__payment-icon"><Icon size={17} aria-hidden="true" /></span>
+              <span className="payora-checkout__payment-label">{option.label}</span>
+              {!option.available && <span className="payora-checkout__payment-unavailable">Unavailable</span>}
+              <input type="radio" name={paymentMethodGroup} value={option.category} checked={category === option.category}
+                disabled={!option.available} onChange={() => setCategory(option.category)} />
+            </label>
+          );
+        })}
+      </div>
+      {!methodChoices.some(option => option.available) && (
+        <p className="payora-checkout__payment-help">No payment methods are currently available. Contact the merchant.</p>
+      )}
     </fieldset>
   );
   const needsMethodChoice = methodChoices.length > 0 && !category && !retryCreationRequired;
