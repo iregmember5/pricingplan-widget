@@ -1,3 +1,5 @@
+import HostedProviderPayment, { hostedProviderRoute } from './HostedProviderPayment';
+import type { PaymentCategory, PaymentMethodOption } from './paymentCategories';
 import { widgetCheckoutStatusTitle } from './checkoutMessages';
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from './apiConfig';
@@ -9,6 +11,8 @@ import { StripeIntegration } from './StripeIntegration';
 import { StripeProvider } from './StripeProvider';
 import {
   getOrCreateWidgetCheckout,
+  getWidgetPaymentMethods,
+  hasSavedWidgetCheckout,
   getWidgetCheckoutStatus,
   startNewWidgetCheckout,
   getSavedPayWhatYouWantIntent,
@@ -157,13 +161,17 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   onBack,
 }) => {
   const savedPwywIntent = payWhatYouWant ? getSavedPayWhatYouWantIntent(widgetId) : null;
-  const [step, setStep] = useState<'methods' | 'contact' | 'stripe' | 'vault' | 'ach' | 'moov' | 'status' | 'success' | 'plan'>('methods');
+  const [step, setStep] = useState<'methods' | 'contact' | 'stripe' | 'vault' | 'ach' | 'moov' | 'hosted' | 'status' | 'success' | 'plan'>('methods');
   const [email, setEmail] = useState('');
   const [customerAmount, setCustomerAmount] = useState(savedPwywIntent?.amount || amount || '');
   const [referenceId, setReferenceId] = useState(savedPwywIntent?.referenceId || '');
   const [comments, setComments] = useState(savedPwywIntent?.comments || '');
   const [pwywIntentLocked, setPwywIntentLocked] = useState(Boolean(savedPwywIntent?.locked));
   const [loading, setLoading] = useState(false);
+  const [methodChoices, setMethodChoices] = useState<PaymentMethodOption[]>([]);
+  const [methodOffer, setMethodOffer] = useState('');
+  const [category, setCategory] = useState<PaymentCategory>();
+  const [categoryLocked, setCategoryLocked] = useState(false);
   const [error, setError] = useState('');
   const [pwywFieldErrors, setPwywFieldErrors] = useState<Record<string, string>>({});
   const [identity, setIdentity] = useState<WidgetCheckoutIdentity | null>(null);
@@ -188,7 +196,9 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
   const displayPlanPrice = amount ? formatCheckoutAmount(amount, currency) : '';
   const continuePriceLabel = displayPlanPrice ? `${displayPlanPrice}${billingText ? ` · ${billingText}` : ''}` : '';
   const serviceUnavailable = /temporarily unavailable|HTTP 503/i.test(error);
+  const hostedRoute = checkout && hostedProviderRoute(checkout.collection, checkout.purchaseId);
   const paymentMayHaveBeenSubmitted = Boolean(checkout && (
+    hostedProviderRoute(null, checkout.purchaseId) ||
     readMoovRecovery(checkout.purchaseId).submitted
     || (hasCpachargeAchFlow(checkout) && hasCpachargeSubmissionStarted(checkout.purchaseId)) || checkout.attemptId || checkout.payment || ['submitting', 'processing', 'uncertain', 'requires_action', 'review_required', 'succeeded'].includes(checkout.status)
   ));
@@ -212,6 +222,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setUnavailableModalOpen(false);
 
     const nativeMoov = isNativeMoov(session.collection, session.currency);
+    const hosted = hostedProviderRoute(session.collection, session.purchaseId);
     const moovSubmitted = nativeMoov && readMoovRecovery(session.purchaseId).submitted;
 
     if (session.status === 'expired') {
@@ -230,7 +241,7 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
 
     const isPlan = session.servicePaymentPlan?.status === 'plan_required';
     const readyForPayment = session.status === 'ready' && session.canSubmit
-      && (hasCpachargeAchFlow(session) || hasVaultCollectionFlow(session) || nativeMoov || canStartStripePayment(session));
+      && (hasCpachargeAchFlow(session) || hasVaultCollectionFlow(session) || nativeMoov || Boolean(hosted) || canStartStripePayment(session));
     if ((isPlan || readyForPayment) && session.purchaseToken && !session.attemptId && !session.payment
       && !moovSubmitted && !session.customerNotifications?.contact_saved && contactPassed.current !== session.purchaseId) {
       setBlockedReason('');
@@ -255,6 +266,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     if (confirmed) {
       setConfirmedReference(String((ach ? session.payment?.transaction_id : null) || session.attemptId || session.purchaseId));
       setStep('success');
+      return;
+    }
+
+    if (hosted && session.purchaseToken && !['failed', 'cancelled'].includes(session.status)) {
+      setBlockedReason('');
+      setStep('hosted');
       return;
     }
 
@@ -306,6 +323,26 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     setStep('stripe');
   };
 
+  useEffect(() => {
+    setMethodChoices([]);
+    setMethodOffer('');
+    setCategory(undefined);
+    setCategoryLocked(false);
+  }, [widgetId, widgetKind, planId, customerAmount, referenceId, comments]);
+
+  const paymentMethodPicker = methodChoices.length > 0 && !retryCreationRequired && (
+    <fieldset className="payora-checkout__field" disabled={loading || pwywIntentLocked || categoryLocked}>
+      <legend>Payment method</legend>
+      {methodChoices.map(option => <label className="payora-checkout__pwyw-hint" key={option.category}>
+        <input type="radio" name="widget-payment-method" value={option.category} checked={category === option.category}
+          disabled={!option.available} onChange={() => setCategory(option.category)} /> {option.label}
+        {!option.available && <small> · Unavailable</small>}
+      </label>)}
+      {!methodChoices.some(option => option.available) && <small>No payment methods are currently available. Contact the merchant.</small>}
+    </fieldset>
+  );
+  const needsMethodChoice = methodChoices.length > 0 && !category && !retryCreationRequired;
+
   const beginCheckout = async () => {
     if (starting.current || loading) return;
     if (!['one_time', 'payment', 'ach'].includes(paymentType.trim().toLowerCase())) {
@@ -354,13 +391,12 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     }
 
     starting.current = true;
-    if (payWhatYouWant) setPwywIntentLocked(true);
     setPriceTimedOut(false);
     setLoading(true);
     setError('');
     setPwywFieldErrors({});
     try {
-      const result = await getOrCreateWidgetCheckout({
+      const offer = {
         widgetKind,
         widgetId: widgetId.trim(),
         planId: payWhatYouWant ? '' : planId.trim(),
@@ -371,7 +407,21 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
         ...(payWhatYouWant && comments ? { comments } : {}),
         ...(payWhatYouWant && (savedPwywIntent?.embedOrigin || getEmbedOrigin())
           ? { embedOrigin: savedPwywIntent?.embedOrigin || getEmbedOrigin() } : {}),
-      });
+      };
+      const saved = hasSavedWidgetCheckout(offer);
+      const offerKey = JSON.stringify(offer);
+      if (!saved && (methodOffer !== offerKey || !category)) {
+        if (methodOffer !== offerKey) {
+          setMethodChoices(await getWidgetPaymentMethods(offer));
+          setMethodOffer(offerKey);
+          setCategory(undefined);
+        }
+        return;
+      }
+      if (!saved && !methodChoices.some(option => option.category === category && option.available)) return;
+      setCategoryLocked(true);
+      if (payWhatYouWant) setPwywIntentLocked(true);
+      const result = await getOrCreateWidgetCheckout({ ...offer, ...(saved ? {} : { paymentCategory: category }) });
       setRetryCreationRequired(false);
       openSession(result.identity, result.session);
     } catch (err: any) {
@@ -554,6 +604,28 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
     );
   }
 
+  if (checkout && hostedRoute && step === 'hosted' && checkout.purchaseToken) {
+    return <div className="payora-checkout">
+      <div className="payora-checkout__container">
+        <CheckoutHeader />
+        <CheckoutProgress active={2} />
+        <div className="payora-checkout__grid">
+          <section className="payora-checkout__main">
+            <h1 className="payora-checkout__title">Complete your payment</h1>
+            <HostedProviderPayment key={checkout.purchaseId} apiRoot={API_BASE_URL + '/payments'}
+              purchaseId={checkout.purchaseId} purchaseToken={checkout.purchaseToken} idempotencyKey={checkout.idempotencyKey}
+              route={hostedRoute} canStart={checkout.status === 'ready' && checkout.canSubmit && !checkout.attemptId && !checkout.payment}
+              initialAction={checkout.nextAction} initialStatus={checkout.status} onConfirmed={() => void checkStatus()} />
+            {error && <p role="alert" className="payora-checkout__alert">{error}</p>}
+            <SupportId value={checkout.purchaseId} />
+          </section>
+          <OrderSummary planName={displayPlanName} features={planFeatures} amount={checkout.amount} currency={checkout.currency}
+            processorLabel={hostedRoute.gateway === 'paypal' ? 'PayPal' : 'Checkout.com'} />
+        </div>
+      </div>
+    </div>;
+  }
+
   if (checkout && identity && step === 'moov' && checkout.purchaseToken) {
     return <div className="payora-checkout">
       <div className="payora-checkout__container">
@@ -691,8 +763,9 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             {payWhatYouWant.collectReferenceId && <label className="payora-checkout__field"><span>Reference ID <em>(optional)</em></span><input className="payora-checkout__input" maxLength={100} value={referenceId} onChange={(event) => { setReferenceId(event.target.value); setPwywFieldErrors((current) => ({ ...current, reference_id: '' })); }} disabled={pwywIntentLocked || loading} placeholder="e.g. Invoice #1042 or Client ID" /><small>Helps {payWhatYouWant.businessName || 'the business'} match your payment.</small>{pwywFieldErrors.reference_id && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.reference_id}</small>}</label>}
             {payWhatYouWant.collectComments && <label className="payora-checkout__field"><span>Note <em>(optional)</em></span><textarea className="payora-checkout__input payora-checkout__pwyw-comments" maxLength={500} value={comments} onChange={(event) => { setComments(event.target.value); setPwywFieldErrors((current) => ({ ...current, comments: '' })); }} disabled={pwywIntentLocked || loading} placeholder="Add a note for the business" /><small className="payora-checkout__pwyw-count">{comments.length} / 500</small>{pwywFieldErrors.comments && <small className="payora-checkout__field-error" role="alert">{pwywFieldErrors.comments}</small>}</label>}
           </div>
+          {paymentMethodPicker}
           {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
-          <button className="payora-checkout__button payora-checkout__pwyw-pay" type="button" style={{ backgroundColor: buttonColor }} onClick={() => void beginCheckout()} disabled={!amountValid || loading || unavailableModalOpen}>{loading ? <><span className="payora-checkout__spinner" /> Preparing secure checkout…</> : <>{payWhatYouWant.buttonLabel || 'Pay Now'}{amountValid ? ` · ${formatCheckoutAmount(customerAmount, currency)}` : ''}</>}</button>
+          <button className="payora-checkout__button payora-checkout__pwyw-pay" type="button" style={{ backgroundColor: buttonColor }} onClick={() => void beginCheckout()} disabled={!amountValid || loading || unavailableModalOpen || needsMethodChoice}>{loading ? <><span className="payora-checkout__spinner" /> Preparing secure checkout…</> : <>{!methodChoices.length && !pwywIntentLocked ? 'Choose payment method' : payWhatYouWant.buttonLabel || 'Continue'}{amountValid ? ` · ${formatCheckoutAmount(customerAmount, currency)}` : ''}</>}</button>
           <div className="payora-checkout__trust payora-checkout__pwyw-trust"><span><LockKeyhole size={14} /> Secure one-time payment</span><span>Enter your payment details on the next step</span></div>
           {pwywIntentLocked && error && <p className="payora-checkout__pwyw-hint">This checkout request is saved. Retry without changing the amount or details, or contact the business if the request was rejected.</p>}
           {payWhatYouWant.supportEmail && <footer className="payora-checkout__pwyw-help">Need help? <a href={`mailto:${payWhatYouWant.supportEmail}`}>{payWhatYouWant.supportEmail}</a></footer>}
@@ -715,13 +788,14 @@ export const PaymentFlow: React.FC<PaymentFlowProps> = ({
             <h1 className="payora-checkout__title">Complete your purchase</h1>
             <p className="payora-checkout__description">Review your plan and total, and add a billing email if you’d like a payment update.</p>
             <BillingEmailField value={email} onChange={setEmail} />
-            {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
-            <button className="payora-checkout__button" type="button" onClick={() => beginCheckout()} disabled={loading || priceTimedOut || unavailableModalOpen}>
-              {loading ? <><span className="payora-checkout__spinner" /> Preparing your secure checkout…</> : <>{retryCreationRequired ? 'Retry secure checkout' : 'Continue'}{continuePriceLabel ? ` · ${continuePriceLabel}` : ' to payment'} <ArrowRight size={17} /></>}
+            {paymentMethodPicker}
+          {error && !serviceUnavailable && <div className="payora-checkout__alert" role="alert">{error}</div>}
+            <button className="payora-checkout__button" type="button" onClick={() => beginCheckout()} disabled={loading || priceTimedOut || unavailableModalOpen || needsMethodChoice}>
+              {loading ? <><span className="payora-checkout__spinner" /> Preparing your secure checkout…</> : <>{retryCreationRequired ? 'Retry secure checkout' : !methodChoices.length ? 'Check payment methods' : 'Continue'}{continuePriceLabel ? ` · ${continuePriceLabel}` : ' to payment'} <ArrowRight size={17} /></>}
             </button>
             {priceTimedOut && <button className="payora-checkout__button payora-checkout__button--subtle" type="button" onClick={() => beginCheckout()} disabled={loading} style={{ marginTop: 10 }}>Retry secure checkout</button>}
             <div className="payora-checkout__trust">
-              <span className="payora-checkout__trust-item"><LockKeyhole size={14} /> Secure card entry</span>
+              <span className="payora-checkout__trust-item"><LockKeyhole size={14} /> Secure payment entry</span>
               <span className="payora-checkout__trust-item"><ShieldCheck size={14} /> No payment on this step</span>
             </div>
           </section>

@@ -1,3 +1,4 @@
+import { readPaymentCategory, readPaymentMethods, type PaymentCategory } from './paymentCategories';
 import { customerCheckoutMessage } from './checkoutMessages';
 import { API_BASE_URL } from './apiConfig';
 import { readMoovRecovery } from './moovNativeCheckout';
@@ -18,6 +19,7 @@ export interface WidgetCheckoutIdentity {
   creationReference: string;
   recoverySecret: string;
   createAcknowledged?: boolean;
+  paymentCategory?: PaymentCategory;
 }
 
 export interface WidgetCollectionConfig {
@@ -50,6 +52,7 @@ export interface WidgetPaymentStatus {
 }
 
 export interface WidgetCheckoutSession {
+  paymentCategory?: PaymentCategory;
   statusMessage?: string;
   checkoutId: string;
   purchaseId: string;
@@ -140,6 +143,7 @@ function normalizeSession(body: any): WidgetCheckoutSession {
     amount: String(row?.amount ?? ''),
     currency: String(row?.currency || '').toUpperCase(),
     expiresAt: String(row?.expires_at || ''),
+    paymentCategory: readPaymentCategory(row?.payment_category),
     recoveryExpiresAt: String(row?.recovery_expires_at || ''),
     status: String(row?.status || ''),
     statusMessage: customerCheckoutMessage(row?.customer_message) || customerCheckoutMessage(row?.status_message) || undefined,
@@ -166,6 +170,9 @@ function normalizeSession(body: any): WidgetCheckoutSession {
 }
 
 function assertCheckoutMatchesIdentity(session: WidgetCheckoutSession, identity: WidgetCheckoutIdentity) {
+  if (identity.paymentCategory && identity.paymentCategory !== session.paymentCategory) {
+    throw new Error('The payment service returned a different method. Check the original checkout before continuing.');
+  }
   if (session.widgetKind !== identity.widgetKind || session.widgetId !== identity.widgetId
     || identity.planId && session.planId !== identity.planId
     || !identity.planId && session.planId && !(session.planId === 'pay_what_you_want' && (session.pricingMode === 'pay_what_you_want' || Number.isInteger(identity.amountMinor)))
@@ -174,19 +181,41 @@ function assertCheckoutMatchesIdentity(session: WidgetCheckoutSession, identity:
   }
 }
 
+type WidgetCheckoutInput = Pick<WidgetCheckoutIdentity, 'widgetKind' | 'widgetId' | 'amountMinor' |
+  'currencyMinorDigits' | 'referenceId' | 'comments' | 'embedOrigin' | 'paymentCategory'> & {
+  planId?: string;
+  quantity?: number;
+};
+
+function widgetOfferPayload(offer: WidgetCheckoutInput) {
+  return {
+    widget_kind: offer.widgetKind,
+    widget_id: offer.widgetId,
+    ...(offer.planId ? { plan_id: offer.planId } : {}),
+    quantity: offer.quantity ?? 1,
+    ...(Number.isInteger(offer.amountMinor) ? { amount_minor: offer.amountMinor } : {}),
+    ...(offer.referenceId ? { reference_id: offer.referenceId } : {}),
+    ...(offer.comments ? { comments: offer.comments } : {}),
+    ...(offer.embedOrigin ? { embed_origin: offer.embedOrigin } : {}),
+  };
+}
+
 function checkoutCreatePayload(identity: WidgetCheckoutIdentity) {
   return {
-    widget_kind: identity.widgetKind,
-    widget_id: identity.widgetId,
-    ...(identity.planId ? { plan_id: identity.planId } : {}),
-    quantity: identity.quantity,
-    ...(Number.isInteger(identity.amountMinor) ? { amount_minor: identity.amountMinor } : {}),
-    ...(identity.referenceId ? { reference_id: identity.referenceId } : {}),
-    ...(identity.comments ? { comments: identity.comments } : {}),
-    ...(identity.embedOrigin ? { embed_origin: identity.embedOrigin } : {}),
+    ...widgetOfferPayload(identity),
+    ...(identity.paymentCategory ? { payment_category: identity.paymentCategory } : {}),
     creation_reference: identity.creationReference,
     recovery_secret: identity.recoverySecret,
   };
+}
+
+export async function getWidgetPaymentMethods(offer: WidgetCheckoutInput) {
+  const body = await post('/payments/widget-checkouts/payment-methods/', widgetOfferPayload(offer));
+  return readPaymentMethods(body.data?.payment_methods);
+}
+
+export function hasSavedWidgetCheckout(offer: WidgetCheckoutInput) {
+  return Boolean(readIdentity(storageKey(offer.widgetKind, offer.widgetId, offer.planId ?? '')));
 }
 
 export class WidgetCheckoutRequestError extends Error {
@@ -314,20 +343,13 @@ export async function getWidgetCheckoutStatus(identity: WidgetCheckoutIdentity) 
   return session;
 }
 
-export async function getOrCreateWidgetCheckout(input: {
-  widgetKind: WidgetKind;
-  widgetId: string;
-  planId?: string;
-  quantity?: number;
-  amountMinor?: number;
-  currencyMinorDigits?: number;
-  referenceId?: string;
-  comments?: string;
-  embedOrigin?: string;
-}) {
-  const { widgetKind, widgetId, planId = '', quantity = 1, amountMinor, currencyMinorDigits = 2, referenceId, comments, embedOrigin } = input;
+export async function getOrCreateWidgetCheckout(input: WidgetCheckoutInput) {
+  const { widgetKind, widgetId, planId = '', quantity = 1, amountMinor, currencyMinorDigits = 2, referenceId, comments, embedOrigin, paymentCategory } = input;
   const key = storageKey(widgetKind, widgetId, planId);
   const existing = readIdentity(key);
+  if (existing && paymentCategory && existing.paymentCategory !== paymentCategory) {
+    throw new Error('Use the original payment method for the saved checkout.');
+  }
   if (existing && (!planId && (existing.amountMinor !== amountMinor
     || (existing.referenceId || '') !== (referenceId || '')
     || (existing.comments || '') !== (comments || '')
@@ -344,6 +366,7 @@ export async function getOrCreateWidgetCheckout(input: {
     ...(referenceId ? { referenceId } : {}),
     ...(comments ? { comments } : {}),
     ...(embedOrigin ? { embedOrigin } : {}),
+    ...(paymentCategory ? { paymentCategory } : {}),
     creationReference: createUuidV4(),
     recoverySecret: createRecoverySecret(),
   };
@@ -481,6 +504,7 @@ export async function startNewWidgetCheckout(input: {
       ...(intent.referenceId ? { referenceId: intent.referenceId } : {}),
       ...(intent.comments ? { comments: intent.comments } : {}),
       ...(intent.embedOrigin ? { embedOrigin: intent.embedOrigin } : {}),
+      ...(expiredIdentity.paymentCategory ? { paymentCategory: expiredIdentity.paymentCategory } : {}),
       creationReference: createUuidV4(),
       recoverySecret: createRecoverySecret(),
     };
